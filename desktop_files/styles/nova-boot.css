@@ -1,0 +1,430 @@
+/* ============================================================
+   NOVA OS — Boot Screen Styles
+   nova-boot.css
+   ============================================================ */
+
+/* ── Google Fonts (local fallbacks guaranteed) ─────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+/* ── CSS Custom Properties ──────────────────────────────────── */
+:root {
+  --nova-black:       #00000f;
+  --nova-deep:        #010510;
+  --nova-bg:          #010714;
+  --nova-dark-blue:   #020c1b;
+
+  --nova-cyan:        #00d4ff;
+  --nova-cyan-dim:    #0099cc;
+  --nova-cyan-glow:   rgba(0, 212, 255, 0.6);
+  --nova-cyan-faint:  rgba(0, 212, 255, 0.08);
+  --nova-cyan-mid:    rgba(0, 212, 255, 0.25);
+
+  --nova-electric:    #0af;
+  --nova-neon:        #00ffff;
+  --nova-white:       #e8f8ff;
+  --nova-text:        rgba(200, 240, 255, 0.85);
+
+  --core-size:        min(42vmin, 380px);
+  --font-orbitron:    'Orbitron', 'Courier New', monospace;
+  --font-rajdhani:    'Rajdhani', 'Arial Narrow', sans-serif;
+}
+
+/* ── Global Reset ───────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--nova-black);
+  cursor: none;
+}
+
+/* ── Boot Screen Container ──────────────────────────────────── */
+.nova-boot {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--nova-black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-rajdhani);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* ── Background gradient layers ───────────────────────────────*/
+.nova-bg-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(0, 30, 70, 0.55) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 80% at 50% 100%, rgba(0, 15, 40, 0.45) 0%, transparent 60%),
+    linear-gradient(180deg, #000812 0%, #010714 50%, #000c1a 100%);
+  z-index: 0;
+}
+
+/* ── Subtle Grid ────────────────────────────────────────────── */
+.nova-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  z-index: 1;
+}
+
+/* ── Vignette ───────────────────────────────────────────────── */
+.nova-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,8,0.85) 100%);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* ── Scanline ───────────────────────────────────────────────── */
+.nova-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.07) 3px,
+    rgba(0, 0, 0, 0.07) 4px
+  );
+  z-index: 3;
+  pointer-events: none;
+}
+
+.nova-scan-sweep {
+  position: absolute;
+  top: -10%;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(0, 212, 255, 0.04) 20%,
+    rgba(0, 212, 255, 0.10) 50%,
+    rgba(0, 212, 255, 0.04) 80%,
+    transparent 100%
+  );
+  animation: scan-sweep 8s linear infinite;
+  z-index: 4;
+  pointer-events: none;
+}
+
+@keyframes scan-sweep {
+  0%   { top: -2%; }
+  100% { top: 102%; }
+}
+
+/* ── NOVA Core container ────────────────────────────────────── */
+.nova-core-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--core-size);
+  height: var(--core-size);
+  z-index: 10;
+}
+
+/* ── Ring base ──────────────────────────────────────────────── */
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid transparent;
+}
+
+/* ── Rotating rings ─────────────────────────────────────────── */
+@keyframes spin-cw  { from { transform: rotate(0deg);   } to { transform: rotate(360deg);  } }
+@keyframes spin-ccw { from { transform: rotate(0deg);   } to { transform: rotate(-360deg); } }
+@keyframes spin-cw-fast { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.ring-outer-glow {
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(0, 212, 255, 0.15);
+  box-shadow: 0 0 40px 2px rgba(0, 212, 255, 0.12), inset 0 0 40px 2px rgba(0, 212, 255, 0.05);
+  animation: spin-cw 40s linear infinite;
+}
+
+.ring-main {
+  width: 92%;
+  height: 92%;
+  border: 2px solid transparent;
+  border-top-color: var(--nova-cyan);
+  border-right-color: var(--nova-cyan);
+  border-bottom-color: rgba(0, 212, 255, 0.3);
+  border-left-color: rgba(0, 212, 255, 0.3);
+  box-shadow:
+    0 0 20px rgba(0, 212, 255, 0.5),
+    0 0 60px rgba(0, 212, 255, 0.2),
+    inset 0 0 20px rgba(0, 212, 255, 0.1);
+  animation: spin-cw 8s linear infinite;
+}
+
+.ring-second {
+  width: 84%;
+  height: 84%;
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  border-top-color: transparent;
+  border-left-color: transparent;
+  animation: spin-ccw 12s linear infinite;
+}
+
+.ring-inner {
+  width: 76%;
+  height: 76%;
+  border: 2px solid rgba(0, 212, 255, 0.2);
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.15), inset 0 0 15px rgba(0, 212, 255, 0.05);
+  animation: spin-cw 20s linear infinite;
+}
+
+.ring-tick {
+  width: 70%;
+  height: 70%;
+  border: 1px dashed rgba(0, 212, 255, 0.25);
+  animation: spin-ccw 6s linear infinite;
+}
+
+.ring-glass {
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(ellipse at 30% 30%, rgba(0, 212, 255, 0.07) 0%, rgba(0, 20, 50, 0.6) 70%);
+  border: 1px solid rgba(0, 212, 255, 0.12);
+  backdrop-filter: blur(2px);
+}
+
+/* ── SVG ring segments pulse ────────────────────────────────── */
+@keyframes seg-pulse {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1.0; }
+}
+
+/* ── Core text ──────────────────────────────────────────────── */
+.nova-text-container {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  z-index: 20;
+}
+
+.nova-title {
+  font-family: var(--font-orbitron);
+  font-weight: 900;
+  font-size: clamp(2rem, 7vmin, 4rem);
+  letter-spacing: 0.18em;
+  color: var(--nova-white);
+  text-shadow:
+    0 0 10px var(--nova-cyan),
+    0 0 30px rgba(0, 212, 255, 0.6),
+    0 0 60px rgba(0, 212, 255, 0.3);
+  line-height: 1;
+}
+
+.nova-subtitle {
+  font-family: var(--font-orbitron);
+  font-weight: 400;
+  font-size: clamp(0.7rem, 2.5vmin, 1.2rem);
+  letter-spacing: 0.5em;
+  color: rgba(0, 212, 255, 0.75);
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
+  padding-left: 0.5em;
+}
+
+/* ── Glitch animation ───────────────────────────────────────── */
+@keyframes glitch-1 {
+  0%, 90%, 100% { clip-path: none; transform: none; opacity: 1; }
+  92%  { clip-path: inset(30% 0 50% 0); transform: translateX(-4px); opacity: 0.8; }
+  94%  { clip-path: inset(70% 0 10% 0); transform: translateX(4px);  opacity: 0.8; }
+  96%  { clip-path: none; transform: none; }
+}
+
+.nova-title-glitch {
+  animation: glitch-1 7s ease-in-out infinite;
+}
+
+/* ── Progress ring (SVG based) ──────────────────────────────── */
+.progress-ring-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform: rotate(-90deg);
+}
+
+/* ── Boot status text ───────────────────────────────────────── */
+.boot-status-wrap {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.boot-status-msg {
+  font-family: var(--font-rajdhani);
+  font-size: clamp(0.75rem, 2vmin, 0.95rem);
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--nova-cyan-dim);
+  text-align: center;
+  min-height: 1.4em;
+}
+
+.boot-status-msg.ready {
+  color: var(--nova-cyan);
+  font-size: clamp(0.9rem, 2.5vmin, 1.1rem);
+  font-weight: 700;
+  text-shadow: 0 0 20px var(--nova-cyan), 0 0 40px rgba(0,212,255,0.5);
+  letter-spacing: 0.3em;
+}
+
+/* ── Progress bar ───────────────────────────────────────────── */
+.progress-bar-wrap {
+  width: 100%;
+  max-width: 400px;
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 2px;
+  background: rgba(0, 212, 255, 0.1);
+  border-radius: 2px;
+  position: relative;
+  overflow: visible;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(0, 212, 255, 0.4), var(--nova-cyan));
+  box-shadow: 0 0 10px var(--nova-cyan), 0 0 20px rgba(0, 212, 255, 0.4);
+  transition: width 0.1s linear;
+  position: relative;
+}
+
+.progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  width: 2px;
+  height: 8px;
+  background: white;
+  box-shadow: 0 0 6px var(--nova-cyan);
+  border-radius: 1px;
+}
+
+.progress-pct {
+  font-family: var(--font-rajdhani);
+  font-size: clamp(0.7rem, 1.8vmin, 0.85rem);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: rgba(0, 212, 255, 0.6);
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* ── System Indicators (side HUD) ───────────────────────────── */
+.sys-indicator {
+  font-family: var(--font-rajdhani);
+  font-size: clamp(0.55rem, 1.4vmin, 0.7rem);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: rgba(0, 180, 220, 0.5);
+  line-height: 1.8;
+}
+
+.sys-indicator-dot {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--nova-cyan);
+  margin-right: 6px;
+  box-shadow: 0 0 6px var(--nova-cyan);
+  vertical-align: middle;
+  animation: dot-blink 2s ease-in-out infinite;
+}
+
+@keyframes dot-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+
+/* ── Particles ──────────────────────────────────────────────── */
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--nova-cyan);
+  pointer-events: none;
+}
+
+/* ── Energy pulse (completion) ──────────────────────────────── */
+@keyframes energy-pulse {
+  0%   { transform: scale(1);    opacity: 0.8; }
+  100% { transform: scale(2.5);  opacity: 0;   }
+}
+
+.energy-pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--nova-cyan);
+  animation: energy-pulse 1s ease-out forwards;
+}
+
+/* ── Pulsating glow ─────────────────────────────────────────── */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; filter: blur(40px); }
+  50%       { opacity: 1.0; filter: blur(50px); }
+}
+
+.core-glow {
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0,212,255,0.18) 0%, transparent 70%);
+  animation: glow-pulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ── Circuit node dots ──────────────────────────────────────── */
+@keyframes node-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--nova-cyan); }
+  50%       { opacity: 0.2; box-shadow: none; }
+}
+
+.circuit-node {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--nova-cyan);
+  animation: node-blink var(--blink-dur, 2s) ease-in-out infinite;
+  animation-delay: var(--blink-delay, 0s);
+}
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

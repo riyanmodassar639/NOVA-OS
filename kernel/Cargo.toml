@@ -1,0 +1,22 @@
+[package]
+name = "nova_kernel"
+version = "0.0.2"
+edition = "2021"
+authors = ["NOVA OS"]
+
+[dependencies]
+volatile = "0.2.6"
+spin = "0.5.2"
+x86_64 = "0.15.5"
+pic8259 = "0.11.0"
+pc-keyboard = "0.7.0"
+linked_list_allocator = "0.10.5"
+crossbeam-queue = { version = "0.3.8", default-features = false, features = ["alloc"] }
+conquer-once = { version = "0.4.0", default-features = false }
+futures-util = { version = "0.3.28", default-features = false, features = ["alloc"] }
+bootloader_api = "0.11.17"
+font8x8 = { version = "0.3.1", default-features = false, features = ["unicode"] }
+
+[dependencies.lazy_static]
+version = "1.4.0"
+features = ["spin_no_std"]
