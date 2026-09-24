@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Cpu, MemoryStick, HardDrive, Monitor, Server, Activity, Zap, Shield, Radio, Globe, Thermometer, AlertTriangle, CheckCircle, Clock, Plane, Phone, Network, Settings2, Wifi, RadioTower, ShieldCheck, Lock, User, ToggleLeft, ToggleRight, List, Shuffle, HelpCircle, ChevronRight, ChevronDown } from "lucide-react";
+import { Cpu, MemoryStick, HardDrive, Monitor, Server, Activity, Zap, Shield, Radio, Globe, Thermometer, AlertTriangle, CheckCircle, Clock, Plane, Phone, Network, Settings2, Wifi, RadioTower, ShieldCheck, Lock, User, ToggleLeft, ToggleRight, List, Shuffle, HelpCircle, ChevronRight, ChevronDown, Settings, Search, MessageSquare, Info, X } from "lucide-react";
 
 interface SystemDetailViewProps {
   type: string;
 }
 
-const ConfigRow = ({ icon: Icon, title, subtitle, rightElement, onClick, color = "0,255,255" }: any) => (
+const ConfigRow = ({ icon: Icon, title, subtitle, rightElement, onClick, hideArrow, color = "0,255,255" }: any) => (
   <div className="hud-clickable" onClick={onClick} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: `rgba(${color},0.05)`, border: `1px solid rgba(${color},0.2)`, borderRadius: "4px", cursor: onClick ? "pointer" : "default", marginBottom: "8px" }}>
     <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
       <div style={{ color: `rgb(${color})`, opacity: 0.8 }}><Icon size={18} /></div>
@@ -16,7 +16,7 @@ const ConfigRow = ({ icon: Icon, title, subtitle, rightElement, onClick, color =
     </div>
     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
       {rightElement}
-      {!rightElement?.props?.hideArrow && <ChevronRight size={16} style={{ opacity: 0.4 }} />}
+      {!hideArrow && !rightElement?.props?.hideArrow && <ChevronRight size={16} style={{ opacity: 0.4 }} />}
     </div>
   </div>
 );
@@ -29,6 +29,15 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   const [expandKnown, setExpandKnown] = useState(false);
   const [expandHardware, setExpandHardware] = useState(false);
   const [expandProperties, setExpandProperties] = useState(false);
+  const [vpnMetered, setVpnMetered] = useState(true);
+  const [vpnRoaming, setVpnRoaming] = useState(true);
+  const [expandVpn, setExpandVpn] = useState(false);
+  const [hotspotOn, setHotspotOn] = useState(false);
+  const [expandHotspotProps, setExpandHotspotProps] = useState(true);
+  const [airplaneMode, setAirplaneMode] = useState(false);
+  const [airplaneWifi, setAirplaneWifi] = useState(true);
+  const [airplaneBluetooth, setAirplaneBluetooth] = useState(true);
+  const [addModal, setAddModal] = useState<string | null>(null);
 
   const [graphs, setGraphs] = useState<{ [k: string]: number[] }>({
     a: Array(50).fill(0).map(() => Math.floor(Math.random() * 80) + 10),
@@ -878,6 +887,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             icon={Wifi} 
             title="Wi-Fi Array Power" 
             color={c}
+            hideArrow={true}
             rightElement={
               <div onClick={(e) => { e.stopPropagation(); setWifiOn(!wifiOn); }} style={{ color: wifiOn ? `rgb(${c})` : "rgba(255,255,255,0.2)" }}>
                 {wifiOn ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
@@ -891,17 +901,137 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
               title="QUANTUM_NET_5G properties" 
               subtitle="Connected, secured (WPA3-SAE)" 
               color={c}
+              hideArrow={true}
               onClick={() => setExpandProperties(!expandProperties)}
               rightElement={<div style={{ transform: expandProperties ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><ChevronDown size={16} style={{ opacity: 0.4 }} /></div>}
             />
             {expandProperties && (
-              <div style={{ padding: "12px 16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <InfoRow label="Network Profile" value="Private (Trusted)" color={c} />
-                <InfoRow label="Security Type" value="WPA3-Personal" color={c} />
-                <InfoRow label="IPv4 Address" value="192.168.99.204" color={c} />
-                <InfoRow label="IPv4 DNS" value="1.1.1.1, 8.8.8.8" color={c} />
-                <InfoRow label="IPv6 Address" value="fe80::1a2b:3c4d" color={c} />
-                <InfoRow label="Manufacturer" value="NOVA Quantum Systems" color={c} />
+              <div style={{ padding: "16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px", display: "flex", flexDirection: "column", gap: "20px", fontSize: "0.8rem", color: "#fff" }}>
+                
+                {/* Password & Autoconnect */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", paddingBottom: "16px", borderBottom: `1px solid rgba(${c}, 0.1)` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>Wi-Fi network password</span>
+                    <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Show</button>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", width: "fit-content" }}>
+                    <input type="checkbox" defaultChecked style={{ accentColor: `rgb(${c})`, cursor: "pointer" }} />
+                    <span>Connect automatically when in range</span>
+                  </label>
+                </div>
+
+                {/* Network Profile */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", paddingBottom: "16px", borderBottom: `1px solid rgba(${c}, 0.1)` }}>
+                  <span style={{ fontWeight: "bold", color: `rgb(${c})` }}>Network profile type</span>
+                  
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", width: "fit-content" }}>
+                    <input type="radio" name="profile" style={{ accentColor: `rgb(${c})`, marginTop: "3px", cursor: "pointer" }} />
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span>Public network (Recommended)</span>
+                      <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>Your device is not discoverable on the network. Use this in most cases.</span>
+                    </div>
+                  </label>
+                  
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", width: "fit-content" }}>
+                    <input type="radio" name="profile" defaultChecked style={{ accentColor: `rgb(${c})`, marginTop: "3px", cursor: "pointer" }} />
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span>Private network</span>
+                      <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>Your device is discoverable on the network. Select this if you need file sharing.</span>
+                    </div>
+                  </label>
+
+                  <span className="hud-clickable" style={{ color: `rgb(${c})`, fontSize: "0.75rem", cursor: "pointer", marginTop: "4px", width: "fit-content" }}>Configure firewall and security settings</span>
+                </div>
+
+                {/* Metered connection */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "16px", borderBottom: `1px solid rgba(${c}, 0.1)` }}>
+                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                     <div style={{ display: "flex", flexDirection: "column" }}>
+                       <span>Metered connection</span>
+                       <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>Some apps might work differently to reduce data usage.</span>
+                     </div>
+                     <ToggleLeft size={24} style={{ color: "rgba(255,255,255,0.2)", cursor: "pointer" }} />
+                   </div>
+                   <span className="hud-clickable" style={{ color: `rgb(${c})`, fontSize: "0.75rem", cursor: "pointer", width: "fit-content" }}>Set a data limit to help control data usage</span>
+                </div>
+
+                {/* Random hardware addresses */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "16px", borderBottom: `1px solid rgba(${c}, 0.1)` }}>
+                   <div style={{ display: "flex", flexDirection: "column", paddingRight: "20px" }}>
+                     <span>Random hardware addresses</span>
+                     <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>Help protect your privacy by making it harder for people to track your device location.</span>
+                   </div>
+                   <select style={{ background: "rgba(0,0,0,0.5)", color: "#fff", border: `1px solid rgba(${c}, 0.3)`, padding: "4px 8px", borderRadius: "4px", outline: "none", cursor: "pointer" }}>
+                     <option>Off</option>
+                     <option>On</option>
+                     <option>Change daily</option>
+                   </select>
+                </div>
+
+                {/* IP & DNS */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingBottom: "16px", borderBottom: `1px solid rgba(${c}, 0.1)` }}>
+                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                     <span style={{ opacity: 0.8 }}>IP assignment:</span>
+                     <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                       <span style={{ opacity: 0.8 }}>Automatic (DHCP)</span>
+                       <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Edit</button>
+                     </div>
+                   </div>
+                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                     <span style={{ opacity: 0.8 }}>DNS server assignment:</span>
+                     <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                       <span style={{ opacity: 0.8 }}>Automatic (DHCP)</span>
+                       <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Edit</button>
+                     </div>
+                   </div>
+                </div>
+
+                {/* Data Transmission Graph */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", paddingBottom: "16px", borderBottom: `1px solid rgba(${c}, 0.1)` }}>
+                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                     <span style={{ opacity: 0.8 }}>DATA TRANSMISSION (KB/s)</span>
+                     <span style={{ color: `rgb(${c})`, fontSize: "0.8rem", letterSpacing: "1px" }}>{graphs.d[graphs.d.length - 1]} KB/s</span>
+                   </div>
+                   <MiniGraph data={graphs.d} color={c} height={40} />
+                </div>
+
+                {/* Readonly Properties */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", position: "relative" }}>
+                   <div style={{ position: "absolute", top: 0, right: 0 }}>
+                     <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Copy</button>
+                   </div>
+                   
+                   {[
+                     ["Connected On:", new Date().toLocaleDateString()],
+                     ["Connected At:", new Date(Date.now() - (tick + 8450) * 1000).toLocaleTimeString()],
+                     ["Duration:", fmtUptime(tick + 8450)],
+                     ["SSID:", "QUANTUM_NET_5G"],
+                     ["Protocol:", "Wi-Fi 7 (802.11be)"],
+                     ["Security type:", "WPA3-Personal"],
+                     ["Manufacturer:", "NOVA Quantum Systems"],
+                     ["Description:", "Quantum Wireless QN-8800X"],
+                     ["Driver version:", "9.0.0.14"],
+                     ["Network band (channel):", "6 GHz (144)"],
+                     ["Aggregated link speed:", "8540/8540 (Mbps)"],
+                     ["Link-local IPv6 address:", "fe80::1a2b:3c4d:5e6f:7a8b%12"],
+                     ["IPv4 address:", "192.168.99.204"],
+                     ["IPv4 default gateway:", "192.168.99.1"],
+                     ["IPv4 DNS servers:", "1.1.1.1 (Unencrypted)"],
+                     ["Physical address (MAC):", "00:1A:2B:3C:4D:5E"],
+                   ].map(([label, value]) => (
+                     <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", padding: "2px 0" }}>
+                       <span style={{ opacity: 0.8 }}>{label}</span>
+                       <span style={{ color: `rgb(${c})`, fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>{value}</span>
+                     </div>
+                   ))}
+                </div>
+
+                {/* Advanced Properties */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "16px", borderTop: `1px solid rgba(${c}, 0.1)` }}>
+                   <span style={{ opacity: 0.8 }}>Advanced Wi-Fi network properties</span>
+                   <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Edit</button>
+                </div>
+
               </div>
             )}
           </div>
@@ -911,6 +1041,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
               icon={Activity} 
               title="Show available networks" 
               color={c}
+              hideArrow={true}
               onClick={() => setExpandAvailable(!expandAvailable)}
               rightElement={<div style={{ transform: expandAvailable ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><ChevronDown size={16} style={{ opacity: 0.4 }} /></div>}
             />
@@ -937,6 +1068,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
               title="Manage known networks" 
               subtitle="Add, remove, and edit networks" 
               color={c}
+              hideArrow={true}
               onClick={() => setExpandKnown(!expandKnown)}
               rightElement={<div style={{ transform: expandKnown ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><ChevronDown size={16} style={{ opacity: 0.4 }} /></div>}
             />
@@ -944,8 +1076,52 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
               <div style={{ padding: "12px 16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
                   <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>3 Networks saved</span>
-                  <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "2px 8px", fontSize: "0.65rem", cursor: "pointer" }}>Add network</button>
+                  <button className="hud-clickable" onClick={() => setAddModal(addModal === 'wifi' ? null : 'wifi')} style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "2px 8px", fontSize: "0.65rem", cursor: "pointer", boxShadow: `0 0 5px rgba(${c},0.2) inset` }}>{addModal === 'wifi' ? 'Cancel' : 'Add network'}</button>
                 </div>
+                
+                {addModal && addModal.startsWith('wifi') && (
+                  <div style={{ padding: "20px", background: `rgba(${c}, 0.03)`, border: `1px solid rgba(${c}, 0.3)`, borderRadius: "4px", position: "relative", overflow: "hidden", marginTop: "10px", marginBottom: "15px", boxShadow: `0 0 15px rgba(${c}, 0.1) inset` }}>
+                     <div style={{ position: "absolute", top: 0, left: "-100%", width: "50%", height: "2px", background: `linear-gradient(90deg, transparent, rgb(${c}), transparent)`, animation: "scanMini 3s linear infinite" }}></div>
+                     <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1px", background: `rgb(${c})`, opacity: 0.2, boxShadow: `0 0 10px rgb(${c})` }}></div>
+                     
+                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+                        <span style={{ fontSize: "0.9rem", letterSpacing: "1px", color: `rgb(${c})`, textShadow: `0 0 8px rgba(${c},0.5)` }}>
+                          {addModal === 'wifi' ? 'SELECT UPLINK NODE' : `AUTHENTICATE: ${addModal.replace('wifi_', '')}`}
+                        </span>
+                        <X size={16} className="hud-clickable" onClick={() => setAddModal(null)} style={{ cursor: "pointer", opacity: 0.7, color: `rgb(${c})` }} />
+                     </div>
+                     
+                     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                        {addModal === 'wifi' ? (
+                          <>
+                            <div className="hud-clickable" onClick={() => setAddModal('wifi_GUEST_NODE_BETA')} style={{ padding: "10px", border: `1px solid rgba(${c},0.2)`, borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color={`rgb(${c})`} /> <span>GUEST_NODE_BETA</span></div>
+                              <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>WPA2/WPA3</span>
+                            </div>
+                            <div className="hud-clickable" onClick={() => setAddModal('wifi_SECURE_ORBIT_LINK')} style={{ padding: "10px", border: `1px solid rgba(${c},0.2)`, borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color={`rgb(${c})`} /> <span>SECURE_ORBIT_LINK</span></div>
+                              <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>WPA3-Enterprise</span>
+                            </div>
+                            <div className="hud-clickable" onClick={() => setAddModal('wifi_OPEN_COMM_NET')} style={{ padding: "10px", border: `1px solid rgba(${c},0.2)`, borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#ffaa00" }}><ShieldCheck size={14} /> <span style={{ color: "#fff" }}>OPEN_COMM_NET</span></div>
+                              <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>Unsecured</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                               <span style={{ fontSize: "0.7rem", opacity: 0.8, color: `rgb(${c})` }}>SECURITY KEY</span>
+                               <input type="password" autoFocus placeholder="Enter network security key" style={{ background: "rgba(0,0,0,0.4)", border: `1px solid rgba(${c},0.3)`, borderRadius: "2px", padding: "6px", color: "#fff", outline: "none", fontSize: "0.8rem", borderLeft: `3px solid rgb(${c})` }} />
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "5px" }}>
+                               <button className="hud-clickable" onClick={() => setAddModal('wifi')} style={{ background: "transparent", border: `1px solid rgba(${c},0.3)`, color: "#fff", borderRadius: "2px", padding: "4px 12px", cursor: "pointer", fontSize: "0.7rem" }}>BACK</button>
+                               <button className="hud-clickable" onClick={() => setAddModal(null)} style={{ background: `rgba(${c}, 0.2)`, border: `1px solid rgb(${c})`, color: `rgb(${c})`, borderRadius: "2px", padding: "4px 12px", cursor: "pointer", fontWeight: "bold", fontSize: "0.7rem", boxShadow: `0 0 5px rgba(${c}, 0.4)` }}>CONNECT</button>
+                            </div>
+                          </>
+                        )}
+                     </div>
+                  </div>
+                )}
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                   <span style={{ fontSize: "0.75rem" }}>QUANTUM_NET_5G</span>
                   <button style={{ background: "transparent", border: "none", color: `rgb(${c})`, fontSize: "0.65rem", cursor: "pointer" }}>Forget</button>
@@ -968,6 +1144,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
               title="Hardware properties" 
               subtitle="View and manage Wi-Fi adapter properties" 
               color={c}
+              hideArrow={true}
               onClick={() => setExpandHardware(!expandHardware)}
               rightElement={<div style={{ transform: expandHardware ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><ChevronDown size={16} style={{ opacity: 0.4 }} /></div>}
             />
@@ -987,6 +1164,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             title="Random hardware addresses" 
             subtitle="Help protect your privacy by making it harder for people to track your device location." 
             color={c}
+            hideArrow={true}
             rightElement={
               <div onClick={(e) => { e.stopPropagation(); setRandomMac(!randomMac); }} style={{ color: randomMac ? `rgb(${c})` : "rgba(255,255,255,0.2)" }}>
                 {randomMac ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
@@ -1004,7 +1182,6 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             </div>
           </div>
         </div>
-
       </div>
     );
   }
@@ -1025,25 +1202,152 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           <StatusBadge label="ENCRYPTED" active={true} color={c} />
         </div>
         <MiniGraph data={graphs.b} color={c} label="PACKET ENCRYPTION LATENCY (ms)" height={80} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-          <Panel color={c}>
-            <SectionTitle icon={Lock} label="TUNNEL DETAILS" color={c} />
-            <InfoRow label="Provider" value="AEGIS-X Military Proxy" color={c} status="ok" />
-            <InfoRow label="Server IP" value="[REDACTED]" color={c} />
-            <InfoRow label="Protocol" value="WireGuard / Nova-Crypt" color={c} />
-            <InfoRow label="Cipher" value="ChaCha20-Poly1305" color={c} status="ok" />
-            <InfoRow label="Handshake" value="Curve25519" color={c} />
-            <InfoRow label="Kill Switch" value="ARMED" color={c} status="ok" />
-          </Panel>
-          <Panel color={c}>
-            <SectionTitle icon={Globe} label="ROUTING METRICS" color={c} />
-            <InfoRow label="Virtual IP" value="10.8.0.44" color={c} />
-            <InfoRow label="Gateway" value="10.8.0.1" color={c} />
-            <InfoRow label="DNS Leak Guard" value="ACTIVE" color={c} status="ok" />
-            <InfoRow label="Bytes TX" value="45.2 GB" color={c} />
-            <InfoRow label="Bytes RX" value="128.9 GB" color={c} />
-            <InfoRow label="Uptime" value="14h 22m 10s" color={c} />
-          </Panel>
+        <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <ConfigRow 
+              icon={ShieldCheck} 
+              title="VPN connections" 
+              color={c}
+              hideArrow={true}
+              rightElement={<button className="hud-clickable" onClick={() => setAddModal(addModal === 'vpn' ? null : 'vpn')} style={{ background: addModal === 'vpn' ? `rgba(${c}, 0.2)` : `rgb(${c})`, border: `1px solid rgb(${c})`, color: addModal === 'vpn' ? `rgb(${c})` : "#000", borderRadius: "4px", padding: "6px 14px", cursor: "pointer", fontWeight: "bold", boxShadow: addModal === 'vpn' ? `0 0 5px rgba(${c}, 0.5) inset` : "none" }}>{addModal === 'vpn' ? 'Cancel' : 'Add VPN'}</button>}
+            />
+            {addModal === 'vpn' && (
+              <div style={{ padding: "20px", background: `rgba(${c}, 0.03)`, border: `1px solid rgba(${c}, 0.3)`, borderRadius: "4px", position: "relative", overflow: "hidden", marginTop: "4px", marginBottom: "15px", boxShadow: `0 0 15px rgba(${c}, 0.1) inset` }}>
+                 <div style={{ position: "absolute", top: 0, left: "-100%", width: "50%", height: "2px", background: `linear-gradient(90deg, transparent, rgb(${c}), transparent)`, animation: "scanMini 3s linear infinite" }}></div>
+                 <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "1px", background: `rgb(${c})`, opacity: 0.2, boxShadow: `0 0 10px rgb(${c})` }}></div>
+                 
+                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+                    <span style={{ fontSize: "0.9rem", letterSpacing: "1px", color: `rgb(${c})`, textShadow: `0 0 8px rgba(${c},0.5)` }}>CONFIGURE SECURE TUNNEL</span>
+                    <X size={16} className="hud-clickable" onClick={() => setAddModal(null)} style={{ cursor: "pointer", opacity: 0.7, color: `rgb(${c})` }} />
+                 </div>
+                 
+                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                       <span style={{ fontSize: "0.7rem", opacity: 0.8, color: `rgb(${c})` }}>VPN PROVIDER</span>
+                       <select style={{ background: "rgba(0,0,0,0.4)", border: `1px solid rgba(${c},0.3)`, borderRadius: "2px", padding: "6px", color: "#fff", outline: "none", fontSize: "0.8rem", borderLeft: `3px solid rgb(${c})` }}>
+                          <option>NOVA Quantum Proxy</option>
+                          <option>Windows (built-in)</option>
+                       </select>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                       <span style={{ fontSize: "0.7rem", opacity: 0.8, color: `rgb(${c})` }}>CONNECTION IDENTIFIER</span>
+                       <input type="text" style={{ background: "rgba(0,0,0,0.4)", border: `1px solid rgba(${c},0.3)`, borderRadius: "2px", padding: "6px", color: "#fff", outline: "none", fontSize: "0.8rem", borderLeft: `3px solid rgb(${c})` }} />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                       <span style={{ fontSize: "0.7rem", opacity: 0.8, color: `rgb(${c})` }}>SERVER NODE ADDRESS</span>
+                       <input type="text" style={{ background: "rgba(0,0,0,0.4)", border: `1px solid rgba(${c},0.3)`, borderRadius: "2px", padding: "6px", color: "#fff", outline: "none", fontSize: "0.8rem", borderLeft: `3px solid rgb(${c})` }} />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                       <span style={{ fontSize: "0.7rem", opacity: 0.8, color: `rgb(${c})` }}>TUNNEL PROTOCOL</span>
+                       <select style={{ background: "rgba(0,0,0,0.4)", border: `1px solid rgba(${c},0.3)`, borderRadius: "2px", padding: "6px", color: "#fff", outline: "none", fontSize: "0.8rem", borderLeft: `3px solid rgb(${c})` }}>
+                          <option>IKEv2 / IPsec</option>
+                          <option>Automatic Routing</option>
+                          <option>L2TP/IPsec with PKI</option>
+                       </select>
+                    </div>
+                    
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "5px" }}>
+                       <button className="hud-clickable" onClick={() => setAddModal(null)} style={{ background: "transparent", border: `1px solid rgba(${c},0.3)`, color: "#fff", borderRadius: "2px", padding: "4px 12px", cursor: "pointer", fontSize: "0.7rem" }}>DISCARD</button>
+                       <button className="hud-clickable" onClick={() => setAddModal(null)} style={{ background: `rgba(${c}, 0.2)`, border: `1px solid rgb(${c})`, color: `rgb(${c})`, borderRadius: "2px", padding: "4px 12px", cursor: "pointer", fontWeight: "bold", fontSize: "0.7rem", boxShadow: `0 0 5px rgba(${c}, 0.4)` }}>ESTABLISH TUNNEL</button>
+                    </div>
+                 </div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", marginTop: "4px" }}>
+            <ConfigRow 
+              icon={Lock} 
+              title="AEGIS-X Military Proxy" 
+              subtitle="Connected"
+              color={c}
+              hideArrow={true}
+              onClick={() => setExpandVpn(!expandVpn)}
+              rightElement={<div style={{ transform: expandVpn ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><ChevronDown size={16} style={{ opacity: 0.4 }} /></div>}
+            />
+            {expandVpn && (
+              <div style={{ padding: "16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px", display: "flex", flexDirection: "column", gap: "16px", fontSize: "0.8rem", color: "#fff" }}>
+                
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                  <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Disconnect</button>
+                  <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Advanced options</button>
+                  <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 12px", cursor: "pointer" }}>Remove</button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", borderTop: `1px solid rgba(${c}, 0.1)`, paddingTop: "16px" }}>
+                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                     <span style={{ opacity: 0.6, fontSize: "0.7rem" }}>CONNECTION PROPERTIES</span>
+                     <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "4px" }}>
+                       <span style={{ opacity: 0.8 }}>Server IP:</span>
+                       <span style={{ color: `rgb(${c})` }}>185.100.12.94</span>
+                       <span style={{ opacity: 0.8 }}>Protocol:</span>
+                       <span style={{ color: `rgb(${c})` }}>WireGuard</span>
+                       <span style={{ opacity: 0.8 }}>Cipher:</span>
+                       <span style={{ color: `rgb(${c})` }}>ChaCha20</span>
+                     </div>
+                   </div>
+                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                     <span style={{ opacity: 0.6, fontSize: "0.7rem" }}>ROUTING METRICS</span>
+                     <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "4px" }}>
+                       <span style={{ opacity: 0.8 }}>Virtual IP:</span>
+                       <span style={{ color: `rgb(${c})` }}>10.8.0.44</span>
+                       <span style={{ opacity: 0.8 }}>Bytes Sent:</span>
+                       <span style={{ color: `rgb(${c})` }}>45.2 GB</span>
+                       <span style={{ opacity: 0.8 }}>Bytes Recv:</span>
+                       <span style={{ color: `rgb(${c})` }}>128.9 GB</span>
+                     </div>
+                   </div>
+                </div>
+
+              </div>
+            )}
+          </div>
+          
+          <div style={{ marginTop: "15px" }}>
+             <SectionTitle icon={Settings2} label="Advanced settings for all VPN connections" color={c} />
+             <ConfigRow 
+               icon={Activity} 
+               title="Allow VPN over metered networks" 
+               color={c}
+               hideArrow={true}
+               rightElement={
+                 <div onClick={(e) => { e.stopPropagation(); setVpnMetered(!vpnMetered); }} style={{ display: "flex", alignItems: "center", gap: "8px", color: vpnMetered ? `rgb(${c})` : "rgba(255,255,255,0.2)" }}>
+                   <span style={{ fontSize: "0.8rem", color: "#fff" }}>{vpnMetered ? "On" : "Off"}</span>
+                   {vpnMetered ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                 </div>
+               }
+             />
+             <ConfigRow 
+               icon={Globe} 
+               title="Allow VPN while roaming" 
+               color={c}
+               hideArrow={true}
+               rightElement={
+                 <div onClick={(e) => { e.stopPropagation(); setVpnRoaming(!vpnRoaming); }} style={{ display: "flex", alignItems: "center", gap: "8px", color: vpnRoaming ? `rgb(${c})` : "rgba(255,255,255,0.2)" }}>
+                   <span style={{ fontSize: "0.8rem", color: "#fff" }}>{vpnRoaming ? "On" : "Off"}</span>
+                   {vpnRoaming ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                 </div>
+               }
+             />
+          </div>
+
+          <div style={{ marginTop: "15px" }}>
+            <SectionTitle icon={HelpCircle} label="Related support" color={c} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px 16px", background: `rgba(${c}, 0.05)`, border: `1px solid rgba(${c}, 0.2)`, borderRadius: "4px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Globe size={16} style={{ opacity: 0.8 }} /> <span>Help with VPN</span></div>
+                 <ChevronDown size={16} style={{ opacity: 0.4 }} />
+              </div>
+              <div style={{ paddingLeft: "24px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span className="hud-clickable" style={{ color: `rgb(${c})`, fontSize: "0.75rem", cursor: "pointer" }}>Setting up a secure VPN connection</span>
+                <span className="hud-clickable" style={{ color: `rgb(${c})`, fontSize: "0.75rem", cursor: "pointer" }}>Setting up a VPN</span>
+              </div>
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px 16px" }}>
+              <span className="hud-clickable" style={{ color: "#fff", fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}><Search size={14} /> Get help</span>
+              <span className="hud-clickable" style={{ color: "#fff", fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}><MessageSquare size={14} /> Give feedback</span>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1065,24 +1369,93 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           <StatusBadge label="BROADCASTING" active={true} color={c} />
         </div>
         <MiniGraph data={graphs.c} color={c} label="CLIENT BANDWIDTH USAGE (MB/s)" height={80} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-          <Panel color={c}>
-            <SectionTitle icon={RadioTower} label="AP CONFIGURATION" color={c} />
-            <InfoRow label="Network Name" value="NOVA_RELAY_44" color={c} />
-            <InfoRow label="Password" value="********" color={c} />
-            <InfoRow label="Band" value="5 GHz" color={c} />
-            <InfoRow label="Security" value="WPA3-Personal" color={c} />
-            <InfoRow label="Max Clients" value="16" color={c} />
-            <InfoRow label="Power Output" value="High (20 dBm)" color={c} />
-          </Panel>
-          <Panel color={c}>
-            <SectionTitle icon={User} label="CONNECTED CLIENTS (2)" color={c} />
-            <InfoRow label="Client 1" value="Commander_Tablet (192.168.137.2)" color={c} status="ok" />
-            <InfoRow label="Client 2" value="Drone_Node_A1 (192.168.137.3)" color={c} status="ok" />
-            <InfoRow label="Data Shared" value="1.4 GB" color={c} />
-            <InfoRow label="DHCP Leases" value="2 / 16" color={c} />
-            <InfoRow label="Bandwidth Limit" value="Unrestricted" color={c} />
-          </Panel>
+        <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <ConfigRow 
+            icon={RadioTower} 
+            title="Mobile hotspot" 
+            color={c}
+            hideArrow={true}
+            rightElement={
+              <div onClick={(e) => { e.stopPropagation(); setHotspotOn(!hotspotOn); }} style={{ display: "flex", alignItems: "center", gap: "8px", color: hotspotOn ? `rgb(${c})` : "rgba(255,255,255,0.2)" }}>
+                <span style={{ fontSize: "0.8rem", color: "#fff" }}>{hotspotOn ? "On" : "Off"}</span>
+                {hotspotOn ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+              </div>
+            }
+          />
+          
+          <ConfigRow 
+            icon={Globe} 
+            title="Share my internet connection from" 
+            color={c}
+            hideArrow={true}
+            rightElement={
+              <select style={{ background: "rgba(0,0,0,0.5)", color: "#fff", border: `1px solid rgba(${c}, 0.3)`, padding: "6px 10px", borderRadius: "4px", outline: "none", cursor: "pointer", width: "120px" }}>
+                <option>Wi-Fi 3</option>
+                <option>Ethernet</option>
+              </select>
+            }
+          />
+
+          <ConfigRow 
+            icon={Activity} 
+            title="Share over" 
+            color={c}
+            hideArrow={true}
+            rightElement={
+              <select style={{ background: "rgba(0,0,0,0.5)", color: "#fff", border: `1px solid rgba(${c}, 0.3)`, padding: "6px 10px", borderRadius: "4px", outline: "none", cursor: "pointer", width: "120px" }}>
+                <option>Wi-Fi</option>
+                <option>Bluetooth</option>
+              </select>
+            }
+          />
+
+          <div style={{ marginTop: "15px" }}>
+            <ConfigRow 
+              icon={Settings2} 
+              title="Properties" 
+              color={c}
+              hideArrow={true}
+              onClick={() => setExpandHotspotProps(!expandHotspotProps)}
+              rightElement={<div style={{ transform: expandHotspotProps ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><ChevronDown size={16} style={{ opacity: 0.4 }} /></div>}
+            />
+            {expandHotspotProps && (
+              <div style={{ padding: "16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px", display: "flex", flexDirection: "column", gap: "16px", fontSize: "0.8rem", color: "#fff" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                   <span style={{ opacity: 0.8 }}>Network properties</span>
+                   <button className="hud-clickable" style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "4px 16px", cursor: "pointer" }}>Edit</button>
+                </div>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "8px", paddingLeft: "16px" }}>
+                   <span style={{ opacity: 0.8 }}>Name:</span>
+                   <span>DESKTOP-SCPJCON 7340</span>
+                   <span style={{ opacity: 0.8 }}>Password:</span>
+                   <span>j6N-6134</span>
+                   <span style={{ opacity: 0.8 }}>Band:</span>
+                   <span>Any available</span>
+                </div>
+
+                <div style={{ marginTop: "8px" }}>
+                  <div style={{ opacity: 0.8, marginBottom: "8px" }}>Scan to connect:</div>
+                  <div style={{ width: "100px", height: "100px", background: "#fff", padding: "4px", borderRadius: "4px" }}>
+                    <svg viewBox="0 0 10 10" style={{ width: "100%", height: "100%" }}>
+                      <rect width="10" height="10" fill="#fff" />
+                      <path d="M1 1h3v3H1z M6 1h3v3H6z M1 6h3v3H1z M2 2h1v1H2z M7 2h1v1H7z M2 7h1v1H2z M4.5 1h1v1h-1z M4.5 2.5h1v1h-1z M1 4.5h1v1H1z M2.5 4.5h1v1h-1z M4.5 4.5h1v1h-1z M6 4.5h1v1H6z M7.5 4.5h1.5v1H7.5z M4.5 6h1v1h-1z M6 6h1v1H6z M7.5 6h1v1H7.5z M6 7.5h3v1H6z M4.5 7.5h1v1.5h-1z" fill="#000" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: "15px" }}>
+            <SectionTitle icon={HelpCircle} label="Related support" color={c} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px 16px", background: `rgba(${c}, 0.05)`, border: `1px solid rgba(${c}, 0.2)`, borderRadius: "4px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Globe size={16} style={{ opacity: 0.8 }} /> <span>Help with Mobile hotspot</span></div>
+                 <ChevronDown size={16} style={{ opacity: 0.4 }} />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1103,19 +1476,72 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           </div>
           <StatusBadge label="STANDBY" active={false} color={c} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "20px" }}>
-          <Panel color={c}>
-            <SectionTitle icon={Radio} label="RF EMITTERS" color={c} />
-            <InfoRow label="Wi-Fi Array" value="ACTIVE" color={c} />
-            <InfoRow label="Bluetooth" value="ACTIVE" color={c} />
-            <InfoRow label="NFC / RFID" value="ACTIVE" color={c} />
-            <InfoRow label="Cellular Modem" value="OFFLINE" color={c} />
-            <InfoRow label="UWB Tracker" value="ACTIVE" color={c} />
-          </Panel>
-          <div style={{ display: "flex", alignItems: "center", justifyItems: "center", textAlign: "center", padding: "20px", border: `1px solid rgba(${c}, 0.2)`, borderRadius: "4px", background: `rgba(${c}, 0.05)` }}>
-            <div style={{ color: `rgb(${c})`, letterSpacing: "2px" }}>
-              <AlertTriangle size={32} style={{ margin: "0 auto 10px" }} />
-              ENGAGING RADIO SILENCE WILL TERMINATE ALL UPLINK CONNECTIONS IMMEDIATELY.
+        <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", background: "rgba(0,120,215,0.1)", border: "1px solid rgba(0,120,215,0.3)", padding: "12px", borderRadius: "4px", marginBottom: "8px" }}>
+             <Info size={16} style={{ color: "rgb(0,120,215)", marginTop: "2px", flexShrink: 0 }} />
+             <span style={{ fontSize: "0.8rem", color: "#fff", opacity: 0.9 }}>
+               We'll remember if you turn on Bluetooth or Wi-Fi after turning on airplane mode. Next time you use airplane mode, Bluetooth or Wi-Fi won't change.
+             </span>
+          </div>
+
+          <ConfigRow 
+            icon={Plane} 
+            title="Airplane mode" 
+            color={c}
+            hideArrow={true}
+            rightElement={
+              <div onClick={(e) => { e.stopPropagation(); setAirplaneMode(!airplaneMode); }} style={{ display: "flex", alignItems: "center", gap: "8px", color: airplaneMode ? `rgb(${c})` : "rgba(255,255,255,0.2)", cursor: "pointer" }}>
+                <span style={{ fontSize: "0.8rem", color: "#fff" }}>{airplaneMode ? "On" : "Off"}</span>
+                {airplaneMode ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+              </div>
+            }
+          />
+
+          <div style={{ marginTop: "15px" }}>
+            <SectionTitle icon={Radio} label="Wireless devices" color={c} />
+            <ConfigRow 
+               icon={Wifi} 
+               title="Wi-Fi 3" 
+               subtitle="Stays on in airplane mode"
+               color={c}
+               hideArrow={true}
+               rightElement={
+                 <div onClick={(e) => { e.stopPropagation(); setAirplaneWifi(!airplaneWifi); }} style={{ display: "flex", alignItems: "center", gap: "8px", color: airplaneWifi ? `rgb(0,255,255)` : "rgba(255,255,255,0.2)", cursor: "pointer" }}>
+                   <span style={{ fontSize: "0.8rem", color: "#fff" }}>{airplaneWifi ? "On" : "Off"}</span>
+                   {airplaneWifi ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                 </div>
+               }
+             />
+             <ConfigRow 
+               icon={RadioTower} 
+               title="Bluetooth" 
+               color={c}
+               hideArrow={true}
+               rightElement={
+                 <div onClick={(e) => { e.stopPropagation(); setAirplaneBluetooth(!airplaneBluetooth); }} style={{ display: "flex", alignItems: "center", gap: "8px", color: airplaneBluetooth ? `rgb(0,255,255)` : "rgba(255,255,255,0.2)", cursor: "pointer" }}>
+                   <span style={{ fontSize: "0.8rem", color: "#fff" }}>{airplaneBluetooth ? "On" : "Off"}</span>
+                   {airplaneBluetooth ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                 </div>
+               }
+             />
+          </div>
+
+          <div style={{ marginTop: "15px" }}>
+            <SectionTitle icon={HelpCircle} label="Related support" color={c} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px 16px", background: `rgba(${c}, 0.05)`, border: `1px solid rgba(${c}, 0.2)`, borderRadius: "4px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Globe size={16} style={{ opacity: 0.8 }} /> <span>Help with Airplane mode</span></div>
+                 <ChevronDown size={16} style={{ opacity: 0.4 }} />
+              </div>
+              <div style={{ paddingLeft: "24px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span className="hud-clickable" style={{ color: `rgb(0,255,255)`, fontSize: "0.75rem", cursor: "pointer" }}>Activating airplane mode easily</span>
+              </div>
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px 16px" }}>
+              <span className="hud-clickable" style={{ color: "#fff", fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}><Search size={14} /> Get help</span>
+              <span className="hud-clickable" style={{ color: "#fff", fontSize: "0.75rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}><MessageSquare size={14} /> Give feedback</span>
             </div>
           </div>
         </div>
