@@ -1,0 +1,276 @@
+/* ============================================================
+   NOVA OS — Enhanced Boot Screen Styles v2.0
+   nova-boot.css
+   ============================================================ */
+
+* {
+  cursor: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 2 L9 20 L12 13 L19 10 Z' fill='rgba(0, 255, 255, 0.9)' stroke='%23ffffff' stroke-width='1'/%3E%3Ccircle cx='2' cy='2' r='1.5' fill='%23ffffff' /%3E%3C/svg%3E") 2 2, auto !important;
+}
+
+button, a {
+  cursor: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 2 L9 20 L12 13 L19 10 Z' fill='%23ffffff' stroke='%2300ffff' stroke-width='1.5'/%3E%3Ccircle cx='2' cy='2' r='1.5' fill='%2300ffff' /%3E%3C/svg%3E") 2 2, pointer !important;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+/* ── CSS Custom Properties ──────────────────────────────────── */
+:root {
+  --nova-black:       #000005;
+  --nova-deep:        #00030a;
+  --nova-bg:          #000714;
+  --nova-cyan:        #00d4ff;
+  --nova-cyan-dim:    rgba(0, 212, 255, 0.3);
+  --nova-cyan-bright: #40e8ff;
+  --nova-cyan-glow:   rgba(0, 212, 255, 0.6);
+  --nova-electric:    #00ffff;
+  --nova-purple:      #6600ff;
+  --nova-white:       #e8f8ff;
+  --font-orbitron:    'Orbitron', 'Courier New', monospace;
+  --font-rajdhani:    'Rajdhani', 'Arial Narrow', sans-serif;
+  --font-mono:        'Share Tech Mono', 'Courier New', monospace;
+  --core-size:        min(48vmin, 460px);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  background: var(--nova-black);
+  cursor: none;
+}
+
+/* ── Boot Container ─────────────────────────────────────────── */
+.nova-boot {
+  position: fixed; inset: 0;
+  width: 100vw; height: 100vh;
+  background: var(--nova-black);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-rajdhani);
+  overflow: hidden; isolation: isolate;
+}
+
+/* ── Background (Optimized Deep Cyber Space) ────────────────── */
+.nova-bg-gradient {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 80% 80% at 50% 50%, rgba(0,30,70,0.4) 0%, transparent 60%),
+    linear-gradient(180deg, #000208 0%, #000714 50%, #000a1a 100%);
+  z-index: 0;
+}
+
+/* ── Hex Grid (Optimized for performance) ───────────────────── */
+.nova-hex-grid {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 80px 80px;
+  animation: grid-pulse 8s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes grid-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1.0; }
+}
+
+/* ── Scanlines & Overlay ────────────────────────────────────── */
+.nova-vignette {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,5,0.95) 100%);
+  z-index: 2; pointer-events: none;
+}
+
+.nova-scanlines {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    to bottom, transparent 0px, transparent 2px,
+    rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px
+  );
+  z-index: 3; pointer-events: none;
+}
+
+/* Laser sweep */
+.nova-scan-sweep {
+  position: absolute; top: -10%; left: 0; width: 100%; height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(0,212,255,0.1) 20%,
+    rgba(0,212,255,0.8) 50%,
+    rgba(0,212,255,0.1) 80%, transparent 100%
+  );
+  box-shadow: 0 0 10px rgba(0,212,255,0.4);
+  animation: scan-sweep 8s linear infinite;
+  z-index: 4; pointer-events: none;
+}
+@keyframes scan-sweep { 0% { top: -10%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 110%; opacity: 0; } }
+
+/* ── Core container ─────────────────────────────────────────── */
+.nova-core-wrap {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: var(--core-size); height: var(--core-size);
+  z-index: 10;
+}
+
+/* ── NOVA Text ──────────────────────────────────────────────── */
+.nova-text-container {
+  position: absolute;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 0px; z-index: 20;
+  user-select: none;
+}
+
+.nova-title {
+  font-family: var(--font-orbitron);
+  font-weight: 900;
+  font-size: clamp(2.2rem, 8vmin, 4.5rem);
+  letter-spacing: 0.22em;
+  color: #ffffff;
+  text-shadow:
+    0 0 10px #fff,
+    0 0 25px var(--nova-cyan),
+    0 0 60px rgba(0, 240, 255, 0.9),
+    0 0 120px rgba(0, 240, 255, 0.5);
+  line-height: 1;
+  padding-left: 0.22em;
+}
+
+.nova-subtitle {
+  font-family: var(--font-orbitron);
+  font-weight: 400;
+  font-size: clamp(0.65rem, 2.2vmin, 1.1rem);
+  letter-spacing: 0.65em;
+  color: rgba(0, 240, 255, 0.9);
+  text-shadow: 0 0 15px rgba(0, 240, 255, 0.8), 0 0 40px rgba(0, 240, 255, 0.4);
+  padding-left: 0.65em;
+}
+
+.nova-ver-tag {
+  font-family: var(--font-mono);
+  font-size: clamp(0.45rem, 1.2vmin, 0.62rem);
+  color: rgba(0, 240, 255, 0.5);
+  letter-spacing: 0.15em;
+  margin-top: 6px;
+}
+
+/* ── Glitch ─────────────────────────────────────────────────── */
+@keyframes glitch-clip1 {
+  0%,88%,100%  { clip-path:none; transform:none; opacity:1; }
+  90%  { clip-path:inset(20% 0 60% 0); transform:translateX(-10px) skewX(-2deg); opacity:0.85; filter: drop-shadow(0 0 20px #f0f) }
+  92%  { clip-path:inset(65% 0 5% 0);  transform:translateX(10px)  skewX(2deg);  opacity:0.85; filter: drop-shadow(0 0 20px #0ff) }
+  94%  { clip-path:inset(40% 0 30% 0); transform:translateX(-5px);              opacity:0.9; }
+  96%  { clip-path:none; transform:none; }
+}
+@keyframes glitch-clip2 {
+  0%,88%,100% { clip-path:none; transform:none; opacity:0; }
+  90% { clip-path:inset(30% 0 50% 0); transform:translateX(8px); opacity:0.8; color:rgba(255,0,255,0.8); }
+  94% { clip-path:none; opacity:0; }
+}
+
+.nova-title-glitch { animation: glitch-clip1 9s ease-in-out infinite; }
+.nova-title-glitch::before {
+  content: 'NOVA';
+  position: absolute;
+  left: 0; top: 0;
+  color: rgba(0,255,255,0.4);
+  animation: glitch-clip2 9s ease-in-out infinite;
+}
+.nova-title-glitch { position: relative; }
+
+/* ── Rings ──────────────────────────────────────────────────── */
+@keyframes spin-cw   { to { transform: rotate(360deg);  } }
+@keyframes spin-ccw  { to { transform: rotate(-360deg); } }
+@keyframes glow-pulse  { 0%,100%{opacity:0.5} 50%{opacity:1} }
+@keyframes seg-pulse   { 0%,100%{opacity:0.2} 50%{opacity:0.9} }
+@keyframes node-blink  { 0%,100%{opacity:1;box-shadow:0 0 6px var(--nova-cyan)} 50%{opacity:0.1;box-shadow:none} }
+@keyframes energy-pulse { 0%{transform:scale(1);opacity:0.9} 100%{transform:scale(2.8);opacity:0} }
+@keyframes core-pulse  { 0%,100%{opacity:0.5;filter:blur(45px)} 50%{opacity:1;filter:blur(55px)} }
+@keyframes radial-appear { from{opacity:0;stroke-dashoffset:50} to{opacity:1;stroke-dashoffset:0} }
+@keyframes scan-sweep-core {
+  0%   { transform:translateY(-100%); opacity:0; }
+  10%  { opacity:0.7; }
+  90%  { opacity:0.7; }
+  100% { transform:translateY(100%);  opacity:0; }
+}
+@keyframes holo-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes dot-blink  { 0%,100%{opacity:1} 50%{opacity:0.15} }
+@keyframes data-stream {
+  0%   { stroke-dashoffset: 400; }
+  100% { stroke-dashoffset: -400; }
+}
+
+/* ── Progress bar ───────────────────────────────────────────── */
+.progress-bar-wrap { width:100%; max-width:440px; }
+.progress-bar-track {
+  width:100%; height:2px;
+  background: rgba(0,212,255,0.08);
+  border-radius:2px;
+  position:relative; overflow:visible;
+}
+.progress-bar-fill {
+  height:100%; border-radius:2px;
+  background: linear-gradient(90deg,
+    rgba(0,100,200,0.6) 0%,
+    rgba(0,180,255,0.9) 50%,
+    rgba(0,255,255,1) 100%
+  );
+  box-shadow: 0 0 12px var(--nova-cyan), 0 0 24px rgba(0,212,255,0.4), 0 0 48px rgba(0,212,255,0.15);
+  transition: width 0.1s linear;
+  position:relative;
+}
+.progress-bar-fill::after {
+  content:''; position:absolute; right:-1px; top:-4px;
+  width:3px; height:10px;
+  background:white;
+  box-shadow:0 0 10px var(--nova-cyan), 0 0 20px rgba(0,212,255,0.8);
+  border-radius:2px;
+}
+.progress-pct {
+  font-family: var(--font-mono);
+  font-size: clamp(0.6rem, 1.6vmin, 0.78rem);
+  letter-spacing:0.25em;
+  color:rgba(0,212,255,0.55);
+  text-align:center; margin-top:7px;
+}
+
+/* ── Boot status ────────────────────────────────────────────── */
+.boot-status-msg {
+  font-family: var(--font-mono);
+  font-size: clamp(0.7rem, 1.8vmin, 0.88rem);
+  letter-spacing:0.12em;
+  color: rgba(0,200,240,0.75);
+  text-align:center; min-height:1.4em;
+}
+.boot-status-msg.ready {
+  color: var(--nova-cyan);
+  font-size: clamp(0.85rem, 2.4vmin, 1.05rem);
+  font-weight:700; letter-spacing:0.35em;
+  text-shadow:0 0 20px var(--nova-cyan),0 0 50px rgba(0,212,255,0.6),0 0 90px rgba(0,212,255,0.3);
+}
+
+/* ── System indicators ──────────────────────────────────────── */
+.sys-indicator {
+  font-family: var(--font-mono);
+  font-size: clamp(0.48rem, 1.2vmin, 0.65rem);
+  color: rgba(0,180,220,0.5);
+  line-height:1.9;
+}
+.sys-indicator-dot {
+  display:inline-block; width:4px; height:4px;
+  border-radius:50%; background:var(--nova-cyan);
+  margin-right:6px;
+  box-shadow:0 0 6px var(--nova-cyan);
+  vertical-align:middle;
+  animation: dot-blink 2s ease-in-out infinite;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration:0.01ms !important; transition-duration:0.01ms !important; }
+}

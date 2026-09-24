@@ -1,0 +1,170 @@
+/* ============================================================
+   NOVA OS — Desktop Environment Styles
+   ============================================================ */
+
+/* Window Base */
+.nova-window {
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 10, 25, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 
+              inset 0 0 20px rgba(0, 212, 255, 0.05);
+  overflow: hidden;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.nova-window:focus-within, .nova-window:active {
+  border-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 
+              0 0 20px rgba(0, 212, 255, 0.2),
+              inset 0 0 20px rgba(0, 212, 255, 0.05);
+}
+
+.nova-window.maximized {
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+/* Window Header */
+.nova-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 12px;
+  background: linear-gradient(90deg, rgba(0, 20, 50, 0.8), rgba(0, 10, 30, 0.5));
+  border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+  cursor: grab;
+  user-select: none;
+}
+
+.nova-window-header:active {
+  cursor: grabbing;
+}
+
+.window-title {
+  font-family: var(--font-rajdhani);
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  color: rgba(0, 212, 255, 0.8);
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.window-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.window-controls button {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: monospace;
+  font-size: 1rem;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.window-controls button:hover {
+  background: rgba(0, 212, 255, 0.1);
+  color: #fff;
+}
+
+.window-controls .btn-close:hover {
+  background: rgba(255, 50, 50, 0.2);
+  color: #ff5555;
+}
+
+/* Window Content */
+.nova-window-content {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  padding: 16px;
+  color: #fff;
+  font-family: var(--font-mono);
+}
+
+/* Dock/Taskbar */
+.nova-dock-container {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: rgba(0, 5, 15, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 
+              0 0 15px rgba(0, 212, 255, 0.1);
+  z-index: 10000;
+}
+
+.nova-dock-item {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background: rgba(0, 20, 50, 0.4);
+  border: 1px solid rgba(0, 212, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  position: relative;
+}
+
+.nova-dock-item:hover {
+  transform: translateY(-8px) scale(1.1);
+  background: rgba(0, 40, 90, 0.6);
+  border-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+}
+
+.nova-dock-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nova-cyan);
+  box-shadow: 0 0 8px var(--nova-cyan);
+}
+
+/* Scrollbars for Window Content */
+.nova-window-content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.nova-window-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.nova-window-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.3);
+  border-radius: 3px;
+}
+.nova-window-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.6);
+}
