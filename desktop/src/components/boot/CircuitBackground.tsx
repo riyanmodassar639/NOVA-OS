@@ -2,6 +2,7 @@ import React, { memo } from "react";
 
 interface CircuitBackgroundProps {
   visible: boolean;
+  progress?: number;
 }
 
 const CircuitBackground: React.FC<CircuitBackgroundProps> = memo(({ visible }) => {

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
 /* ============================================================
    NOVA OS — Enhanced Boot Screen Styles v2.0
    nova-boot.css
@@ -10,9 +12,6 @@
 button, a {
   cursor: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 2 L9 20 L12 13 L19 10 Z' fill='%23ffffff' stroke='%2300ffff' stroke-width='1.5'/%3E%3Ccircle cx='2' cy='2' r='1.5' fill='%2300ffff' /%3E%3C/svg%3E") 2 2, pointer !important;
 }
-
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
-
 /* ── CSS Custom Properties ──────────────────────────────────── */
 :root {
   --nova-black:       #000005;

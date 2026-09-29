@@ -1,0 +1,12 @@
+*.iso
+*.log
+*.AppImage
+*.deb
+*.rpm
+*.tsbuildinfo
+node_modules/
+dist/
+target/
+build/
+.env
+.DS_Store

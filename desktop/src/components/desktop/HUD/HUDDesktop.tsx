@@ -38,11 +38,22 @@ const HUDDesktop: React.FC = () => {
     window.location.reload();
   };
 
-  const handleAppLaunch = (id: string, label: string) => {
+  const handleAppLaunch = async (id: string, label: string, type: "internal" | "external") => {
     setIsDrawerOpen(false); // Close drawer
-    setSubApps([]);
-    setFloatingApp({ id, label }); // Open floating window
-    setActiveWindowId(id);
+    
+    if (type === "external") {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('launch_external_app', { appId: id });
+        console.log(`Successfully launched external app: ${id}`);
+      } catch (err) {
+        console.error(`Failed to launch external app ${id}:`, err);
+      }
+    } else {
+      setSubApps([]);
+      setFloatingApp({ id, label }); // Open floating window
+      setActiveWindowId(id);
+    }
   };
 
   const handleOpenSubApp = (id: string, label: string) => {

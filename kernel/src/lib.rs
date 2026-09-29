@@ -12,6 +12,8 @@ pub mod shell;
 pub mod fs;
 pub mod syscall;
 pub mod userspace;
+pub mod graphics;
+pub mod boot_screen;
 
 pub fn init() {
     interrupts::init_idt();

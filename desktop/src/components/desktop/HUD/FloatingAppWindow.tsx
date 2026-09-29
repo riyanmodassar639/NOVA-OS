@@ -3,6 +3,7 @@ import { X, Maximize2, Minus, Minimize2 } from "lucide-react";
 import SettingsApp from "./SettingsApp";
 import SystemDetailView from "./SystemDetailView";
 import GlobalCommandDashboard from "./GlobalCommandDashboard";
+import SecurityProtocolApp from "./SecurityProtocolApp";
 
 interface FloatingAppWindowProps {
   appId: string | null;
@@ -237,6 +238,7 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
             {(appId?.startsWith("sys_") || appId?.startsWith("net_")) && appId !== "sys_command" && <SystemDetailView type={appId} />}
 
             {appId === "sys_command" && <GlobalCommandDashboard onOpenSubApp={onOpenSubApp} />}
+            {appId === "security" && <SecurityProtocolApp />}
 
             {appId === "files" && (
               <div style={{ padding: "20px", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px", overflowY: "auto", height: "100%" }}>

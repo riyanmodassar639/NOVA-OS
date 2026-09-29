@@ -40,15 +40,11 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("Heap initialization failed");
 
-    // Test Heap Allocation (we won't print this directly to screen while loading)
-    let _heap_value = Box::new(42);
-    let mut _vec = Vec::new();
-    for i in 0..5 {
-        _vec.push(i);
-    }
+    // Play NOVA Boot Screen Animation
+    nova_kernel::boot_screen::play_animation();
 
     println!("NOVA OS Kernel");
-    println!("Version 0.07 (High-Res Framebuffer Ready)\n");
+    println!("Version 0.08 (Custom Graphical Kernel)\n");
     println!("Starting NOVA OS Task Scheduler...");
     let mut executor = nova_kernel::task::executor::Executor::new();
     executor.spawn(nova_kernel::task::Task::new(nova_kernel::shell::run()));

@@ -340,3 +340,13 @@ button, a, .hud-app-btn, .hud-drawer-item, .hud-app-tab, .hud-clickable {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+@keyframes holo-spin {
+  from { transform: perspective(800px) rotateY(0deg); }
+  to { transform: perspective(800px) rotateY(360deg); }
+}
+
+@keyframes scanVertical {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}

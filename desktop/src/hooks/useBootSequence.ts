@@ -61,6 +61,7 @@ export function useBootSequence({ onBootComplete, autoStart = true }: UseBootSeq
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const perfMultiplier = useRef<number>(1);
 
   const cleanup = useCallback(() => {
     if (stepTimerRef.current) clearTimeout(stepTimerRef.current);
@@ -69,9 +70,32 @@ export function useBootSequence({ onBootComplete, autoStart = true }: UseBootSeq
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
   }, []);
 
+  const measureSystemPerformance = () => {
+    // Quick synthetic benchmark to determine system capability
+    const start = performance.now();
+    let result = 0;
+    for (let i = 0; i < 5000000; i++) {
+      result += Math.sqrt(i);
+    }
+    const timeTaken = performance.now() - start;
+    
+    // Baseline: Assume a very fast system takes ~5ms for this loop
+    // Slower systems might take 50ms+
+    let multiplier = timeTaken / 5.0;
+    
+    // Clamp multiplier to reasonable bounds (0.2x to 6.0x)
+    if (multiplier < 0.2) multiplier = 0.2;
+    if (multiplier > 6.0) multiplier = 6.0;
+    
+    return multiplier;
+  };
+
   const startBootSequence = useCallback(() => {
     cleanup();
     bootStartRef.current = performance.now();
+    
+    // Measure system performance once at the start of boot
+    perfMultiplier.current = measureSystemPerformance();
 
     // Schedule phases instantly
     setPhase("booting");
@@ -89,7 +113,10 @@ export function useBootSequence({ onBootComplete, autoStart = true }: UseBootSeq
     // Smoothly animate progress to target
     const targetProgress = step.progress;
     const startProgress = BOOT_SEQUENCE[stepIdx - 1]?.progress ?? 0;
-    const duration = step.duration;
+    
+    // Multiply the hardcoded duration by the system performance multiplier
+    const duration = step.duration * perfMultiplier.current;
+    
     const startTime = performance.now();
 
     const animateProgress = () => {
@@ -112,7 +139,7 @@ export function useBootSequence({ onBootComplete, autoStart = true }: UseBootSeq
           setTimeout(() => {
             setPhase("complete");
             onBootComplete?.();
-          }, 1800);
+          }, 1800 * perfMultiplier.current); // Scale the final delay too!
         } else {
           stepTimerRef.current = setTimeout(() => {
             runBootSteps(stepIdx + 1);

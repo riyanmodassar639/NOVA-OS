@@ -36,6 +36,7 @@ export const APPS: Record<string, AppDefinition> = {
   terminal: { id: "terminal", title: "AI TERMINAL", icon: "⌨️" },
   monitor:  { id: "monitor",  title: "SYS MONITOR", icon: "📊" },
   uplink:   { id: "uplink",   title: "NET UPLINK",  icon: "🌐" },
+  security: { id: "security", title: "SECURITY",  icon: "🛡️" },
 };
 
 export const WindowManagerProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
