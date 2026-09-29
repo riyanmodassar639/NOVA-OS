@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Cpu, MemoryStick, HardDrive, Monitor, Activity, Radio, Globe, Shield, Zap, ExternalLink } from "lucide-react";
+import { invoke } from '@tauri-apps/api/core';
 
 interface GlobalCommandDashboardProps {
   onOpenSubApp?: (id: string, label: string) => void;
@@ -66,29 +67,86 @@ const SectionHeader = ({ icon: Icon, title, color, appId, appLabel, onOpenSubApp
 
 const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenSubApp }) => {
   const [dataPoints, setDataPoints] = useState<{ [key: string]: number[] }>({
-    cpu: Array(40).fill(50),
-    ram: Array(40).fill(30),
-    netUp: Array(40).fill(10),
-    netDown: Array(40).fill(15),
-    gpu: Array(40).fill(40),
-    disk: Array(40).fill(5),
+    cpu: Array(40).fill(0),
+    ram: Array(40).fill(0),
+    netUp: Array(40).fill(0),
+    netDown: Array(40).fill(0),
+    gpu: Array(40).fill(0),
+    disk: Array(40).fill(0),
   });
 
+  const [liveStats, setLiveStats] = useState({
+    memUsedGB: 0,
+    memTotalGB: 0,
+    temp: "N/A"
+  });
+
+  const [cpuInfo, setCpuInfo] = useState<{ [key: string]: string }>({});
   const [uptime, setUptime] = useState(25300);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setDataPoints(prev => ({
-        cpu: [...prev.cpu.slice(1), Math.floor(Math.random() * 80) + 10],
-        ram: [...prev.ram.slice(1), Math.floor(Math.random() * 20) + 40],
-        netUp: [...prev.netUp.slice(1), Math.floor(Math.random() * 90) + 5],
-        netDown: [...prev.netDown.slice(1), Math.floor(Math.random() * 90) + 5],
-        gpu: [...prev.gpu.slice(1), Math.floor(Math.random() * 70) + 20],
-        disk: [...prev.disk.slice(1), Math.floor(Math.random() * 40)],
-      }));
-      setUptime(prev => prev + 1);
+    let isMounted = true;
+
+    const fetchAdvancedStats = async () => {
+      try {
+        const advancedInfo: any = await invoke('get_advanced_cpu_info');
+        if (isMounted) setCpuInfo(advancedInfo);
+      } catch (err) {
+        console.warn("Failed to fetch advanced CPU info", err);
+        if (isMounted) setCpuInfo({
+          "Model name": "Simulated Processor (Dev Mode) @ 3.4GHz",
+          "Vendor ID": "SimulatedVendor",
+          "Architecture": "x86_64",
+          "CPU(s)": "16",
+          "Thread(s) per core": "2",
+          "Socket(s)": "1"
+        });
+      }
+    };
+    fetchAdvancedStats();
+
+    const interval = setInterval(async () => {
+      try {
+        const stats: any = await invoke('get_system_stats');
+        
+        if (!isMounted) return;
+
+        const memUsedGB = stats.memory_used / (1024 * 1024 * 1024);
+        const memTotalGB = stats.memory_total / (1024 * 1024 * 1024);
+        const memPercent = memTotalGB > 0 ? (memUsedGB / memTotalGB) * 100 : 0;
+
+        setLiveStats({
+          memUsedGB,
+          memTotalGB,
+          temp: stats.temperature
+        });
+
+        setDataPoints(prev => ({
+          cpu: [...prev.cpu.slice(1), stats.cpu_usage || 0],
+          ram: [...prev.ram.slice(1), memPercent || 0],
+          netUp: [...prev.netUp.slice(1), Math.floor(Math.random() * 90) + 5], // Still simulated for now
+          netDown: [...prev.netDown.slice(1), Math.floor(Math.random() * 90) + 5], // Still simulated for now
+          gpu: [...prev.gpu.slice(1), Math.floor(Math.random() * 70) + 20], // Still simulated for now
+          disk: [...prev.disk.slice(1), Math.floor(Math.random() * 40)], // Still simulated for now
+        }));
+      } catch (err) {
+        // Fallback to simulated if Tauri is not available (e.g. running in web browser)
+        if (!isMounted) return;
+        setDataPoints(prev => ({
+          cpu: [...prev.cpu.slice(1), Math.floor(Math.random() * 80) + 10],
+          ram: [...prev.ram.slice(1), Math.floor(Math.random() * 20) + 40],
+          netUp: [...prev.netUp.slice(1), Math.floor(Math.random() * 90) + 5],
+          netDown: [...prev.netDown.slice(1), Math.floor(Math.random() * 90) + 5],
+          gpu: [...prev.gpu.slice(1), Math.floor(Math.random() * 70) + 20],
+          disk: [...prev.disk.slice(1), Math.floor(Math.random() * 40)],
+        }));
+      }
+      if (isMounted) setUptime(prev => prev + 1);
     }, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const formatUptime = (seconds: number) => {
@@ -124,42 +182,26 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
           <SectionHeader icon={Cpu} title="PROCESSOR ARRAY" color="0,255,255" appId="sys_cpu" appLabel="CPU DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <SvgLineGraph data={dataPoints.cpu} color="0, 255, 255" label="GLOBAL UTILIZATION" height={100} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
-            <MiniDetail label="MODEL" value="Quantum-X" color="0,255,255" />
-            <MiniDetail label="ARCHITECTURE" value="RISC-V Q" color="0,255,255" />
-            <MiniDetail label="LITHOGRAPHY" value="1.5 nm" color="0,255,255" />
-            <MiniDetail label="CLOCK (BASE)" value="6.00 GHz" color="0,255,255" />
-            <MiniDetail label="CLOCK (BOOST)" value="8.50 GHz" color="0,255,255" />
-            <MiniDetail label="BUS SPEED" value="400 MHz" color="0,255,255" />
-            <MiniDetail label="CORES" value="128 / 256" color="0,255,255" />
-            <MiniDetail label="TEMP" value={`${Math.floor(dataPoints.cpu[39]*0.3 + 30)}°C`} color="0,255,255" />
-            <MiniDetail label="PROCESSES" value="276" color="0,255,255" />
-            <MiniDetail label="THREADS" value="3828" color="0,255,255" />
-            <MiniDetail label="HANDLES" value="120,754" color="0,255,255" />
-            <MiniDetail label="SOCKETS" value="2" color="0,255,255" />
-            <MiniDetail label="VIRTUALIZATION" value="Enabled" color="0,255,255" />
-            <MiniDetail label="VOLTAGE" value="1.450 V" color="0,255,255" />
-            <MiniDetail label="L1 CACHE" value="256 KB" color="0,255,255" />
-            <MiniDetail label="L2 CACHE" value="32.0 MB" color="0,255,255" />
-            <MiniDetail label="L3 CACHE" value="256.0 MB" color="0,255,255" />
-            <MiniDetail label="L4 CACHE" value="1.0 GB" color="0,255,255" />
-            <MiniDetail label="INSTRUCTION SET" value="AVX-1024" color="0,255,255" />
-            <MiniDetail label="MICROCODE REV" value="0x1F4A" color="0,255,255" />
-            <MiniDetail label="TDP MAX" value="350 W" color="0,255,255" />
-            <MiniDetail label="THROTTLING" value="Inactive" color="0,255,255" />
-            <MiniDetail label="PACKAGE PWR" value="120 W" color="0,255,255" />
-            <MiniDetail label="IPC RATING" value="Ext. High" color="0,255,255" />
-            <MiniDetail label="BRANCH PRED" value="Neural" color="0,255,255" />
-            <MiniDetail label="AVX OFFSET" value="-200 MHz" color="0,255,255" />
-            <MiniDetail label="FAB" value="TSMC N3E" color="0,255,255" />
-            <MiniDetail label="DIE SIZE" value="840 mm²" color="0,255,255" />
-            <MiniDetail label="TRANSISTORS" value="150 Billion" color="0,255,255" />
-            <MiniDetail label="STEPPING" value="B0" color="0,255,255" />
-            <MiniDetail label="P-CORES" value="64" color="0,255,255" />
-            <MiniDetail label="E-CORES" value="64" color="0,255,255" />
-            <MiniDetail label="NPU" value="Active" color="0,255,255" />
-            <MiniDetail label="NPU SPEED" value="45 TOPS" color="0,255,255" />
-            <MiniDetail label="RING CLOCK" value="4000 MHz" color="0,255,255" />
-            <MiniDetail label="BCLK" value="100.0 MHz" color="0,255,255" />
+            <MiniDetail label="MODEL" value={cpuInfo["Model name"]?.split(" @")[0] || "N/A"} color="0,255,255" />
+            <MiniDetail label="VENDOR" value={cpuInfo["Vendor ID"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="ARCHITECTURE" value={cpuInfo["Architecture"] || "N/A"} color="0,255,255" />
+            
+            <MiniDetail label="CORES" value={cpuInfo["CPU(s)"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="THREADS / CORE" value={cpuInfo["Thread(s) per core"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="SOCKETS" value={cpuInfo["Socket(s)"] || "N/A"} color="0,255,255" />
+            
+            <MiniDetail label="CLOCK" value={cpuInfo["Model name"]?.split("@ ")[1] || "N/A"} color="0,255,255" />
+            <MiniDetail label="BOGOMIPS" value={cpuInfo["BogoMIPS"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="TEMP" value={liveStats.temp} color="0,255,255" />
+            
+            <MiniDetail label="VIRTUALIZATION" value={cpuInfo["Virtualization"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="STEPPING" value={cpuInfo["Stepping"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="BYTE ORDER" value={cpuInfo["Byte Order"] || "N/A"} color="0,255,255" />
+            
+            <MiniDetail label="L1d CACHE" value={cpuInfo["L1d cache"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="L1i CACHE" value={cpuInfo["L1i cache"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="L2 CACHE" value={cpuInfo["L2 cache"] || "N/A"} color="0,255,255" />
+            <MiniDetail label="L3 CACHE" value={cpuInfo["L3 cache"] || "N/A"} color="0,255,255" />
           </div>
         </div>
 
@@ -170,10 +212,10 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
             <SvgLineGraph data={dataPoints.ram} color="255, 0, 255" label="Q-DIMM ALLOCATION" height={100} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
-            <MiniDetail label="CAPACITY" value="512 GB" color="255,0,255" />
+            <MiniDetail label="CAPACITY" value={`${liveStats.memTotalGB.toFixed(1)} GB`} color="255,0,255" />
             <MiniDetail label="SPEED" value="8400 MT/s" color="255,0,255" />
-            <MiniDetail label="IN USE" value={`${(dataPoints.ram[39]*5.12).toFixed(1)} GB`} color="255,0,255" />
-            <MiniDetail label="AVAILABLE" value={`${(512 - dataPoints.ram[39]*5.12).toFixed(1)} GB`} color="255,0,255" />
+            <MiniDetail label="IN USE" value={`${liveStats.memUsedGB.toFixed(1)} GB`} color="255,0,255" />
+            <MiniDetail label="AVAILABLE" value={`${(liveStats.memTotalGB - liveStats.memUsedGB).toFixed(1)} GB`} color="255,0,255" />
             <MiniDetail label="COMMITTED" value="59.5 GB" color="255,0,255" />
             <MiniDetail label="CACHED" value="14.9 GB" color="255,0,255" />
             <MiniDetail label="PAGED POOL" value="1,288 MB" color="255,0,255" />

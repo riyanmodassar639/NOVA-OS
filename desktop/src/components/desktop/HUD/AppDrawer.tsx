@@ -1,6 +1,6 @@
 import React from "react";
 import * as Icons from "lucide-react";
-import { APP_REGISTRY, AppType } from "../../data/AppRegistry";
+import { APP_REGISTRY, AppType } from "../../../data/AppRegistry";
 
 interface AppDrawerProps {
   isOpen: boolean;

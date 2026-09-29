@@ -10,7 +10,7 @@ cd ~/NOVA-ISO
 sudo lb clean || true
 sudo rm -rf config .build cache/stages_chroot cache/chroot
 
-# Configure live-build for Ubuntu Resolute (26.04 LTS) to match WSL host GLIBC version
+# Configure live-build for Ubuntu Resolute (26.04 LTS)
 lb config \
   --mode ubuntu \
   --distribution resolute \
@@ -19,12 +19,13 @@ lb config \
   --memtest "none" \
   --bootloader "syslinux" \
   --syslinux-theme "live-build" \
-  --binary-images "iso-hybrid"
+  --binary-images "iso-hybrid" \
+  --apt-options "-y -o Acquire::ForceIPv4=true"
 
 # Copy our compiled NOVA desktop .deb package inside the filesystem
 echo "Copying NOVA Desktop package to filesystem..."
 mkdir -p config/includes.chroot/opt
-cp ~/NOVA/desktop/src-tauri/target/release/bundle/deb/*.deb config/includes.chroot/opt/nova-os.deb
+cp /mnt/d/NOVA/desktop/src-tauri/target/release/bundle/deb/*.deb config/includes.chroot/opt/nova-os.deb
 
 # Create a hook to install it during build
 echo "Creating installation hook..."

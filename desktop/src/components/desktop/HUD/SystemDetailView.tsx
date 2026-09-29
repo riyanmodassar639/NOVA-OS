@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Cpu, MemoryStick, HardDrive, Monitor, Server, Activity, Zap, Shield, Radio, Globe, Thermometer, AlertTriangle, CheckCircle, Clock, Plane, Phone, Network, Settings2, Wifi, RadioTower, ShieldCheck, Lock, User, ToggleLeft, ToggleRight, List, Shuffle, HelpCircle, ChevronRight, ChevronDown, Settings, Search, MessageSquare, Info, X } from "lucide-react";
+import { invoke } from '@tauri-apps/api/core';
 
 interface SystemDetailViewProps {
   type: string;
@@ -45,7 +46,37 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
     c: Array(50).fill(0).map(() => Math.floor(Math.random() * 60) + 5),
     d: Array(50).fill(0).map(() => Math.floor(Math.random() * 30) + 60),
   });
+  const [cpuInfo, setCpuInfo] = useState<{ [key: string]: string }>({});
+  const [cpuTelemetry, setCpuTelemetry] = useState<any>(null);
+
   useEffect(() => {
+    let isMounted = true;
+
+    if (type === "sys_cpu") {
+      // Poll real CPU telemetry every 1 second
+      const pollTelemetry = async () => {
+        try {
+          const data: any = await invoke('get_cpu_telemetry');
+          if (!isMounted) return;
+          setCpuTelemetry(data);
+          setGraphs(prev => ({
+            ...prev,
+            a: [...prev.a.slice(1), Math.round(data.global_usage)],
+            b: [...prev.b.slice(1), data.thermal_available ? Math.round(data.temperature_c) : prev.b[prev.b.length - 1]],
+            c: [...prev.c.slice(1), data.power_available ? Math.round(data.power_draw_w) : prev.c[prev.c.length - 1]],
+          }));
+        } catch (err) {
+          console.warn('get_cpu_telemetry failed', err);
+        }
+      };
+      pollTelemetry();
+      const iv = setInterval(() => {
+        pollTelemetry();
+        setTick(t => t + 1);
+      }, 1000);
+      return () => { isMounted = false; clearInterval(iv); };
+    }
+
     const iv = setInterval(() => {
       setTick(t => t + 1);
       setGraphs(prev => ({
@@ -55,8 +86,8 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         d: [...prev.d.slice(1), Math.floor(Math.random() * 20) + 70],
       }));
     }, 800);
-    return () => clearInterval(iv);
-  }, []);
+    return () => { isMounted = false; clearInterval(iv); };
+  }, [type]);
 
   const uptime = 25300 + tick;
   const fmtUptime = (s: number) => {
@@ -160,8 +191,18 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   // ===================== CPU =====================
   if (type === "sys_cpu") {
     const c = "0,255,255";
+    const t = cpuTelemetry;
     const curUtil = graphs.a[graphs.a.length - 1];
     const curTemp = graphs.b[graphs.b.length - 1];
+    const curPower = graphs.c[graphs.c.length - 1];
+    const cores: number[] = t?.per_core_usage ?? [];
+    const cols = cores.length <= 4 ? 4 : cores.length <= 8 ? 4 : cores.length <= 16 ? 4 : 8;
+    const fmtUptime2 = (s: number) => {
+      const h = Math.floor(s / 3600).toString().padStart(2,'0');
+      const m = Math.floor((s % 3600) / 60).toString().padStart(2,'0');
+      const sc = (s % 60).toString().padStart(2,'0');
+      return `${h}:${m}:${sc}`;
+    };
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", background: "radial-gradient(ellipse at top left, rgba(0,40,60,0.3) 0%, transparent 60%)" }}>
         <style>{styles}</style>
@@ -170,44 +211,51 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <Cpu size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
             <div>
-              <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})`, animation: "glow 3s infinite" }}>PROCESSOR DIAGNOSTICS</div>
-              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>QUANTUM-X NEURAL ENGINE // FIELD ANALYSIS TERMINAL</div>
+              <div style={{ fontSize: "1.1rem", letterSpacing: "3px", fontWeight: "bold", color: `rgb(${c})`, animation: "glow 3s infinite", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "500px" }}>
+                {t?.model_name || "PROCESSOR DIAGNOSTICS"}
+              </div>
+              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>CPU DIAGNOSTICS // REAL-TIME FIELD ANALYSIS</div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
             <StatusBadge label="ACTIVE" active={true} color={c} />
-            <StatusBadge label="THERMAL OK" active={curTemp < 80} color={c} />
-            <StatusBadge label="NO THROTTLE" active={true} color={c} />
+            <StatusBadge label={t?.thermal_available ? `${Math.round(t.temperature_c)}°C` : "TEMP N/A"} active={!t?.thermal_available || t.temperature_c < 85} color={c} />
+            <StatusBadge label={t?.power_available ? `${curPower}W` : "PWR N/A"} active={true} color={c} />
           </div>
         </div>
 
         {/* ROW 1: GRAPHS */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "12px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <MiniGraph data={graphs.a} color={c} label="CORE UTILIZATION AGGREGATE" height={90} />
-            <MiniGraph data={graphs.b} color="255,100,100" label="THERMAL OUTPUT (°C)" height={60} suffix="°C" />
-            <MiniGraph data={graphs.c} color="0,200,100" label="POWER DRAW (Watts)" height={60} suffix="W" />
+            <MiniGraph data={graphs.a} color={c} label={`CORE UTILIZATION — ${curUtil}%`} height={90} />
+            <MiniGraph data={graphs.b} color="255,100,100" label={t?.thermal_available ? `THERMAL OUTPUT` : "THERMAL OUTPUT — SENSOR N/A"} height={60} suffix="°C" />
+            <MiniGraph data={graphs.c} color="0,200,100" label={t?.power_available ? `PACKAGE POWER DRAW` : "POWER DRAW — SENSOR N/A"} height={60} suffix="W" />
           </div>
-          {/* Core map */}
-          <div style={{ background: `rgba(${c},0.03)`, border: `1px solid rgba(${c},0.15)`, borderRadius: "4px", padding: "10px" }}>
+          {/* Real Core Load Map */}
+          <div style={{ background: `rgba(${c},0.03)`, border: `1px solid rgba(${c},0.15)`, borderRadius: "4px", padding: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
             <SectionTitle icon={Cpu} label="CORE LOAD MAP" color={c} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: "3px" }}>
-              {Array.from({ length: 32 }).map((_, i) => {
-                const load = Math.floor(Math.random() * 90) + 5;
-                const hue = load > 80 ? "255,80,80" : load > 50 ? "255,200,0" : c;
-                return (
-                  <div key={i} title={`Core ${i}: ${load}%`} style={{ height: "18px", background: `rgba(${hue},${load / 130})`, border: `1px solid rgba(${hue},0.4)`, borderRadius: "1px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ fontSize: "0.4rem", color: `rgb(${hue})`, fontFamily: "var(--font-mono)" }}>{load}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ marginTop: "10px", fontSize: "0.55rem", opacity: 0.5, letterSpacing: "1px" }}>32 OF 128 CORES DISPLAYED</div>
-            <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-              <ProgressBar label="P-CORES (64)" value={curUtil} color={c} />
-              <ProgressBar label="E-CORES (64)" value={Math.floor(curUtil * 0.6)} color="0,200,150" />
-              <ProgressBar label="L3 CACHE HIT" value={94} color="0,180,255" />
-            </div>
+            {cores.length === 0 ? (
+              <div style={{ fontSize: "0.6rem", opacity: 0.5, fontFamily: "var(--font-mono)" }}>LOADING...</div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "3px" }}>
+                  {cores.map((load: number, i: number) => {
+                    const l = Math.round(load);
+                    const hue = l > 80 ? "255,80,80" : l > 50 ? "255,200,0" : c;
+                    return (
+                      <div key={i} title={`Core ${i}: ${l}%`} style={{ height: "22px", background: `rgba(${hue},${Math.max(l / 130, 0.08)})`, border: `1px solid rgba(${hue},0.4)`, borderRadius: "2px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <span style={{ fontSize: "0.45rem", color: `rgb(${hue})`, fontFamily: "var(--font-mono)", fontWeight: "bold" }}>{l}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: "0.55rem", opacity: 0.5, letterSpacing: "1px" }}>
+                  {cores.length} LOGICAL CORES — {t?.physical_cores ?? "?"} PHYSICAL
+                </div>
+                <ProgressBar label={`TOTAL LOAD (${cores.length} CORES)`} value={curUtil} color={c} />
+                <ProgressBar label="HIGHEST CORE" value={Math.round(Math.max(...cores, 0))} color="255,150,50" />
+              </>
+            )}
           </div>
         </div>
 
@@ -215,44 +263,38 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
           <Panel color={c}>
             <SectionTitle icon={Cpu} label="IDENTITY & ARCHITECTURE" color={c} />
-            <InfoRow label="Designation" value="Quantum-X Neural" color={c} status="ok" />
-            <InfoRow label="Architecture" value="RISC-V Quantum" color={c} />
-            <InfoRow label="Lithography" value="1.5 nm TSMC N3E" color={c} />
-            <InfoRow label="Die Size" value="840 mm²" color={c} />
-            <InfoRow label="Transistors" value="150 Billion" color={c} />
-            <InfoRow label="Microcode Rev" value="0x1F4A (Build 5)" color={c} />
-            <InfoRow label="CPU Stepping" value="B0" color={c} />
-            <InfoRow label="Package" value="LGA-9999" color={c} />
-            <InfoRow label="Sockets" value="2 Physical" color={c} />
-            <InfoRow label="Instruction Set" value="AVX-1024 / VNNI" color={c} />
+            <InfoRow label="Designation" value={t?.model_name?.split(" @")[0] || "N/A"} color={c} status="ok" />
+            <InfoRow label="Vendor" value={t?.vendor || "N/A"} color={c} />
+            <InfoRow label="Architecture" value={t?.architecture || "N/A"} color={c} />
+            <InfoRow label="Stepping" value={t?.stepping || "N/A"} color={c} />
+            <InfoRow label="Microcode Rev" value={t?.microcode || "N/A"} color={c} />
+            <InfoRow label="Byte Order" value={t?.byte_order || "N/A"} color={c} />
+            <InfoRow label="Sockets" value={t ? String(t.sockets) : "N/A"} color={c} />
+            <InfoRow label="BogoMIPS" value={t?.bogomips || "N/A"} color={c} />
+            <InfoRow label="Virtualization" value={t?.virtualization || "N/A"} color={c} status={t?.has_vt ? "ok" : undefined} />
           </Panel>
           <Panel color={c}>
             <SectionTitle icon={Activity} label="PERFORMANCE TELEMETRY" color={c} />
-            <InfoRow label="Base Clock" value="6.00 GHz" color={c} />
-            <InfoRow label="Boost Clock" value="8.50 GHz" color={c} />
-            <InfoRow label="Bus Speed" value="400 MHz" color={c} />
-            <InfoRow label="BCLK" value="100.0 MHz" color={c} />
-            <InfoRow label="Multiplier" value="x 85" color={c} />
-            <InfoRow label="Core Voltage" value="1.450 V" color={c} status="ok" />
-            <InfoRow label="TDP (Max)" value="350 Watts" color={c} />
-            <InfoRow label="Package Power" value={`${Math.floor(curUtil * 3.2 + 50)} W`} color={c} />
-            <InfoRow label="THROTTLING" value="INACTIVE" color={c} status="ok" />
-            <InfoRow label="AVX Offset" value="-200 MHz" color={c} />
+            <InfoRow label="Base Clock" value={t ? `${t.base_clock_mhz.toFixed(0)} MHz` : "N/A"} color={c} />
+            <InfoRow label="Logical CPUs" value={t ? String(t.logical_cores) : "N/A"} color={c} />
+            <InfoRow label="Physical Cores" value={t ? String(t.physical_cores) : "N/A"} color={c} />
+            <InfoRow label="Threads / Core" value={t ? String(t.threads_per_core) : "N/A"} color={c} />
+            <InfoRow label="NUMA Nodes" value={t?.numa_nodes || "N/A"} color={c} />
+            <InfoRow label="Core Voltage" value={t?.voltage_available ? `${t.core_voltage_v.toFixed(3)} V` : "SENSOR N/A"} color={c} status={t?.voltage_available ? "ok" : undefined} />
+            <InfoRow label="Package Power" value={t?.power_available ? `${t.power_draw_w.toFixed(1)} W` : "SENSOR N/A"} color={c} />
+            <InfoRow label="AVX / AVX2" value={t ? `${t.has_avx ? "AVX ✓" : "AVX ✗"}  ${t.has_avx2 ? "AVX2 ✓" : "AVX2 ✗"}` : "N/A"} color={c} />
+            <InfoRow label="AES-NI" value={t?.has_aes ? "ACTIVE" : "N/A"} color={c} status={t?.has_aes ? "ok" : undefined} />
           </Panel>
           <Panel color={c}>
             <SectionTitle icon={Shield} label="CACHE & SUBSYSTEM" color={c} />
-            <InfoRow label="L1 Data Cache" value="256 KB (per core)" color={c} />
-            <InfoRow label="L1 Instr Cache" value="128 KB (per core)" color={c} />
-            <InfoRow label="L2 Cache" value="32.0 MB" color={c} />
-            <InfoRow label="L3 Cache" value="256.0 MB" color={c} />
-            <InfoRow label="L4 Cache" value="1.0 GB HBM" color={c} />
-            <InfoRow label="Processes" value={`${276 + (tick % 5)}`} color={c} />
-            <InfoRow label="Threads (Active)" value={`${3828 + (tick % 20)}`} color={c} />
-            <InfoRow label="Handles" value={`${120754 + (tick * 3)}`} color={c} />
-            <InfoRow label="NPU Status" value="ACTIVE — 45 TOPS" color={c} status="ok" />
-            <InfoRow label="Virtualization" value="ENABLED (VT-x)" color={c} status="ok" />
-            <InfoRow label="Branch Pred" value="Neural Assisted" color={c} />
-            <InfoRow label="Uptime" value={fmtUptime(uptime)} color={c} />
+            <InfoRow label="L1 Data Cache" value={t?.l1d_cache || "N/A"} color={c} />
+            <InfoRow label="L1 Instr Cache" value={t?.l1i_cache || "N/A"} color={c} />
+            <InfoRow label="L2 Cache" value={t?.l2_cache || "N/A"} color={c} />
+            <InfoRow label="L3 Cache" value={t?.l3_cache || "N/A"} color={c} />
+            <InfoRow label="Processes" value={t ? String(t.process_count) : "N/A"} color={c} />
+            <InfoRow label="Threads (Active)" value={t ? String(t.thread_count) : "N/A"} color={c} />
+            <InfoRow label="AVX-512" value={t?.has_avx512 ? "SUPPORTED" : "NOT SUPPORTED"} color={c} />
+            <InfoRow label="Uptime" value={t ? fmtUptime2(t.uptime_secs) : fmtUptime(uptime)} color={c} />
           </Panel>
         </div>
       </div>
