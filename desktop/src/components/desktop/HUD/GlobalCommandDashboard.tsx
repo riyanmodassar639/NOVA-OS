@@ -80,6 +80,7 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
     memTotalGB: 0,
     temp: "N/A"
   });
+  const [memTelemetry, setMemTelemetry] = useState<any>(null);
 
   const [cpuInfo, setCpuInfo] = useState<{ [key: string]: string }>({});
   const [uptime, setUptime] = useState(25300);
@@ -108,7 +109,6 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
     const interval = setInterval(async () => {
       try {
         const stats: any = await invoke('get_system_stats');
-        
         if (!isMounted) return;
 
         const memUsedGB = stats.memory_used / (1024 * 1024 * 1024);
@@ -124,13 +124,19 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         setDataPoints(prev => ({
           cpu: [...prev.cpu.slice(1), stats.cpu_usage || 0],
           ram: [...prev.ram.slice(1), memPercent || 0],
-          netUp: [...prev.netUp.slice(1), Math.floor(Math.random() * 90) + 5], // Still simulated for now
-          netDown: [...prev.netDown.slice(1), Math.floor(Math.random() * 90) + 5], // Still simulated for now
-          gpu: [...prev.gpu.slice(1), Math.floor(Math.random() * 70) + 20], // Still simulated for now
-          disk: [...prev.disk.slice(1), Math.floor(Math.random() * 40)], // Still simulated for now
+          netUp: [...prev.netUp.slice(1), Math.floor(Math.random() * 90) + 5],
+          netDown: [...prev.netDown.slice(1), Math.floor(Math.random() * 90) + 5],
+          gpu: [...prev.gpu.slice(1), Math.floor(Math.random() * 70) + 20],
+          disk: [...prev.disk.slice(1), Math.floor(Math.random() * 40)],
         }));
+
+        // Fetch detailed memory telemetry every cycle
+        try {
+          const mem: any = await invoke('get_memory_telemetry');
+          if (isMounted) setMemTelemetry(mem);
+        } catch (_) {}
+
       } catch (err) {
-        // Fallback to simulated if Tauri is not available (e.g. running in web browser)
         if (!isMounted) return;
         setDataPoints(prev => ({
           cpu: [...prev.cpu.slice(1), Math.floor(Math.random() * 80) + 10],
@@ -209,47 +215,27 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,0,255,0.02)", padding: "15px", border: "1px solid rgba(255,0,255,0.1)", borderRadius: "4px", overflow: "hidden" }}>
           <SectionHeader icon={MemoryStick} title="MEMORY SUBSYSTEM" color="255,0,255" appId="sys_memory" appLabel="MEMORY DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <div style={{ flexShrink: 0 }}>
-            <SvgLineGraph data={dataPoints.ram} color="255, 0, 255" label="Q-DIMM ALLOCATION" height={100} />
+            <SvgLineGraph data={dataPoints.ram} color="255, 0, 255" label={memTelemetry ? `RAM USAGE — ${memTelemetry.used_percent.toFixed(1)}%` : "RAM ALLOCATION"} height={100} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
-            <MiniDetail label="CAPACITY" value={`${liveStats.memTotalGB.toFixed(1)} GB`} color="255,0,255" />
-            <MiniDetail label="SPEED" value="8400 MT/s" color="255,0,255" />
-            <MiniDetail label="IN USE" value={`${liveStats.memUsedGB.toFixed(1)} GB`} color="255,0,255" />
-            <MiniDetail label="AVAILABLE" value={`${(liveStats.memTotalGB - liveStats.memUsedGB).toFixed(1)} GB`} color="255,0,255" />
-            <MiniDetail label="COMMITTED" value="59.5 GB" color="255,0,255" />
-            <MiniDetail label="CACHED" value="14.9 GB" color="255,0,255" />
-            <MiniDetail label="PAGED POOL" value="1,288 MB" color="255,0,255" />
-            <MiniDetail label="NON-PAGED" value="859 MB" color="255,0,255" />
-            <MiniDetail label="FORM FACTOR" value="Q-DIMM" color="255,0,255" />
-            <MiniDetail label="SLOTS USED" value="4 of 8" color="255,0,255" />
-            <MiniDetail label="RESERVED" value="157 MB" color="255,0,255" />
-            <MiniDetail label="CAS LATENCY" value="CL 28" color="255,0,255" />
-            <MiniDetail label="tRAS DELAY" value="38 Clocks" color="255,0,255" />
-            <MiniDetail label="CMD RATE" value="1T" color="255,0,255" />
-            <MiniDetail label="ECC STATUS" value="Active" color="255,0,255" />
-            <MiniDetail label="VDD VOLTAGE" value="1.10 V" color="255,0,255" />
-            <MiniDetail label="CONTROLLER" value="4800 MHz" color="255,0,255" />
-            <MiniDetail label="TOPOLOGY" value="Daisy Chain" color="255,0,255" />
-            <MiniDetail label="BANK GROUPS" value="16" color="255,0,255" />
-            <MiniDetail label="DRAM VENDOR" value="Hynix-Q" color="255,0,255" />
-            <MiniDetail label="THERMAL" value="32°C" color="255,0,255" />
-            <MiniDetail label="ERROR RATE" value="0.0001%" color="255,0,255" />
-            <MiniDetail label="PREFETCH" value="Hardware" color="255,0,255" />
-            <MiniDetail label="BURST LEN" value="16 Bytes" color="255,0,255" />
-            <MiniDetail label="REF CYCLE" value="350 ns" color="255,0,255" />
-            <MiniDetail label="CMD TIMING" value="1N" color="255,0,255" />
-            <MiniDetail label="REFRESH RATE" value="Auto" color="255,0,255" />
-            <MiniDetail label="SPD EXT" value="EXPO II" color="255,0,255" />
-            <MiniDetail label="ROW ACTIVE" value="42 Clocks" color="255,0,255" />
-            <MiniDetail label="WRITE RECOV" value="24 Clocks" color="255,0,255" />
-            <MiniDetail label="BANK CYCLE" value="66 Clocks" color="255,0,255" />
-            <MiniDetail label="GEAR MODE" value="Gear 1" color="255,0,255" />
-            <MiniDetail label="tRCD" value="36 Clocks" color="255,0,255" />
-            <MiniDetail label="tRP" value="36 Clocks" color="255,0,255" />
-            <MiniDetail label="VDDQ" value="1.10 V" color="255,0,255" />
-            <MiniDetail label="PMIC" value="Unlocked" color="255,0,255" />
-            <MiniDetail label="HEATSINK" value="Graphene" color="255,0,255" />
-            <MiniDetail label="RGB SYNC" value="Aura" color="255,0,255" />
+            <MiniDetail label="TOTAL" value={memTelemetry ? `${memTelemetry.total_gb.toFixed(1)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="IN USE" value={memTelemetry ? `${memTelemetry.used_gb.toFixed(1)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="AVAILABLE" value={memTelemetry ? `${memTelemetry.available_gb.toFixed(1)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="FREE" value={memTelemetry ? `${memTelemetry.free_gb.toFixed(2)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="CACHED" value={memTelemetry ? `${memTelemetry.cached_gb.toFixed(2)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="BUFFERS" value={memTelemetry ? `${memTelemetry.buffers_gb.toFixed(2)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="SHARED" value={memTelemetry ? `${memTelemetry.shmem_gb.toFixed(2)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="MAPPED" value={memTelemetry ? `${memTelemetry.mapped_gb.toFixed(2)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="SLAB" value={memTelemetry ? `${memTelemetry.slab_gb.toFixed(2)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="COMMITTED" value={memTelemetry ? `${memTelemetry.committed_gb.toFixed(1)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="SWAP TOTAL" value={memTelemetry ? `${memTelemetry.swap_total_gb.toFixed(1)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="SWAP USED" value={memTelemetry ? `${memTelemetry.swap_used_gb.toFixed(2)} GB` : "N/A"} color="255,0,255" />
+            <MiniDetail label="MEM TYPE" value={memTelemetry?.mem_type || "N/A"} color="255,0,255" />
+            <MiniDetail label="FORM FACTOR" value={memTelemetry?.form_factor || "N/A"} color="255,0,255" />
+            <MiniDetail label="SPEED" value={memTelemetry?.speed_mts > 0 ? `${memTelemetry.speed_mts} MT/s` : "N/A"} color="255,0,255" />
+            <MiniDetail label="SLOTS USED" value={memTelemetry?.num_slots_total > 0 ? `${memTelemetry.num_slots_used} of ${memTelemetry.num_slots_total}` : "N/A"} color="255,0,255" />
+            <MiniDetail label="MANUFACTURER" value={memTelemetry?.manufacturer || "N/A"} color="255,0,255" />
+            <MiniDetail label="SERIAL" value={memTelemetry?.serial || "N/A"} color="255,0,255" />
           </div>
         </div>
 

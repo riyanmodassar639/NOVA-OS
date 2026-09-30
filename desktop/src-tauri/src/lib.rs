@@ -401,6 +401,172 @@ fn execute_system_command(cmd: &str) -> Result<String, String> {
     }
 }
 
+// ─── Memory Telemetry ───────────────────────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct MemoryTelemetry {
+    // Raw bytes from sysinfo
+    total_bytes: u64,
+    used_bytes: u64,
+    available_bytes: u64,
+    free_bytes: u64,
+    // Swap / Page file
+    swap_total_bytes: u64,
+    swap_used_bytes: u64,
+    // Percentage
+    used_percent: f32,
+    // Human-readable GB strings (pre-formatted for UI)
+    total_gb: f32,
+    used_gb: f32,
+    available_gb: f32,
+    free_gb: f32,
+    swap_total_gb: f32,
+    swap_used_gb: f32,
+    // From dmidecode / /proc/meminfo extras
+    mem_type: String,          // DDR4, DDR5, LPDDR5, etc.
+    form_factor: String,       // DIMM, SO-DIMM
+    speed_mts: u32,            // MT/s rating e.g. 3200
+    num_slots_used: u32,
+    num_slots_total: u32,
+    manufacturer: String,      // e.g. Samsung, Hynix
+    serial: String,
+    cached_gb: f32,
+    buffers_gb: f32,
+    shmem_gb: f32,
+    mapped_gb: f32,
+    slab_gb: f32,
+    committed_gb: f32,
+}
+
+// ─── Helper: read key from /proc/meminfo ─────────────────────────────────────
+fn read_meminfo_kb(key: &str) -> u64 {
+    if let Some(content) = read_sysfs("/proc/meminfo") {
+        for line in content.lines() {
+            if line.starts_with(key) {
+                let val: u64 = line
+                    .split_whitespace()
+                    .nth(1)
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                return val * 1024; // convert kB -> bytes
+            }
+        }
+    }
+    0
+}
+
+// ─── Helper: run dmidecode to get DIMM info ───────────────────────────────────
+fn get_dimm_info() -> (String, String, u32, u32, u32, String, String) {
+    // Returns: (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial)
+    let mut mem_type = "N/A".to_string();
+    let mut form_factor = "N/A".to_string();
+    let mut speed_mts: u32 = 0;
+    let mut slots_used: u32 = 0;
+    let mut slots_total: u32 = 0;
+    let mut manufacturer = "N/A".to_string();
+    let mut serial = "N/A".to_string();
+
+    // Try dmidecode (requires root, works on Linux)
+    if let Ok(output) = Command::new("dmidecode").args(["-t", "17"]).output() {
+        if let Ok(text) = String::from_utf8(output.stdout) {
+            let mut in_device = false;
+            let mut current_size_valid = false;
+            for line in text.lines() {
+                let l = line.trim();
+                if l == "Memory Device" { in_device = true; slots_total += 1; current_size_valid = false; }
+                if !in_device { continue; }
+                if l.starts_with("Size:") {
+                    let sz = l.replace("Size:", "").trim().to_string();
+                    if !sz.contains("No Module") && !sz.is_empty() && sz != "Unknown" {
+                        slots_used += 1;
+                        current_size_valid = true;
+                    }
+                }
+                if current_size_valid {
+                    if l.starts_with("Type:") && !l.contains("Error") {
+                        mem_type = l.replace("Type:", "").trim().to_string();
+                    }
+                    if l.starts_with("Form Factor:") {
+                        form_factor = l.replace("Form Factor:", "").trim().to_string();
+                    }
+                    if l.starts_with("Configured Memory Speed:") || l.starts_with("Speed:") {
+                        if speed_mts == 0 {
+                            let s = l.split_once(':').map(|p| p.1.trim()).unwrap_or("");
+                            speed_mts = s.split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                        }
+                    }
+                    if l.starts_with("Manufacturer:") && manufacturer == "N/A" {
+                        manufacturer = l.replace("Manufacturer:", "").trim().to_string();
+                        if manufacturer == "Unknown" { manufacturer = "N/A".to_string(); }
+                    }
+                    if l.starts_with("Serial Number:") && serial == "N/A" {
+                        let s = l.replace("Serial Number:", "").trim().to_string();
+                        if s != "Unknown" && !s.is_empty() { serial = s; }
+                    }
+                }
+            }
+        }
+    }
+    (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial)
+}
+
+#[tauri::command]
+fn get_memory_telemetry(state: tauri::State<SysState>) -> MemoryTelemetry {
+    let mut sys = state.sys.lock().unwrap();
+    sys.refresh_memory();
+
+    let total   = sys.total_memory();
+    let used    = sys.used_memory();
+    let free    = sys.free_memory();
+    let avail   = sys.available_memory();
+    let sw_tot  = sys.total_swap();
+    let sw_used = sys.used_swap();
+    drop(sys);
+
+    let to_gb = |b: u64| b as f32 / (1024.0 * 1024.0 * 1024.0);
+    let used_pct = if total > 0 { (used as f32 / total as f32) * 100.0 } else { 0.0 };
+
+    // /proc/meminfo extras (Linux)
+    let cached_bytes   = read_meminfo_kb("Cached:");
+    let buffers_bytes  = read_meminfo_kb("Buffers:");
+    let shmem_bytes    = read_meminfo_kb("Shmem:");
+    let mapped_bytes   = read_meminfo_kb("Mapped:");
+    let slab_bytes     = read_meminfo_kb("Slab:");
+    let committed_bytes= read_meminfo_kb("Committed_AS:");
+
+    // DIMM hardware info
+    let (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial) = get_dimm_info();
+
+    MemoryTelemetry {
+        total_bytes: total,
+        used_bytes: used,
+        available_bytes: avail,
+        free_bytes: free,
+        swap_total_bytes: sw_tot,
+        swap_used_bytes: sw_used,
+        used_percent: used_pct,
+        total_gb: to_gb(total),
+        used_gb: to_gb(used),
+        available_gb: to_gb(avail),
+        free_gb: to_gb(free),
+        swap_total_gb: to_gb(sw_tot),
+        swap_used_gb: to_gb(sw_used),
+        mem_type,
+        form_factor,
+        speed_mts,
+        num_slots_used: slots_used,
+        num_slots_total: slots_total,
+        manufacturer,
+        serial,
+        cached_gb: to_gb(cached_bytes),
+        buffers_gb: to_gb(buffers_bytes),
+        shmem_gb: to_gb(shmem_bytes),
+        mapped_gb: to_gb(mapped_bytes),
+        slab_gb: to_gb(slab_bytes),
+        committed_gb: to_gb(committed_bytes),
+    }
+}
+
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -415,6 +581,7 @@ pub fn run() {
             get_system_stats,
             get_advanced_cpu_info,
             get_cpu_telemetry,
+            get_memory_telemetry,
             launch_external_app,
             execute_system_command,
         ])
