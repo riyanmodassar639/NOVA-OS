@@ -304,90 +304,133 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   // ===================== MEMORY =====================
   if (type === "sys_memory") {
     const c = "255,0,255";
-    const inUsePct = Math.floor(graphs.a[graphs.a.length - 1] * 0.9 + 10);
-    const inUseGB = (inUsePct * 5.12).toFixed(1);
+    const [memData, setMemData] = useState<any>(null);
+    const [memGraphs, setMemGraphs] = useState<{ used: number[], committed: number[] }>({
+      used: Array(50).fill(0),
+      committed: Array(50).fill(0),
+    });
+
+    useEffect(() => {
+      let alive = true;
+      const poll = async () => {
+        try {
+          const m: any = await invoke('get_memory_telemetry');
+          if (!alive) return;
+          setMemData(m);
+          setMemGraphs(prev => ({
+            used: [...prev.used.slice(1), Math.round(m.used_percent)],
+            committed: [...prev.committed.slice(1), Math.round((m.committed_gb / m.total_gb) * 100)],
+          }));
+        } catch (_) {}
+      };
+      poll();
+      const iv = setInterval(poll, 1000);
+      return () => { alive = false; clearInterval(iv); };
+    }, []);
+
+    const m = memData;
+    const slots: any[] = m?.slot_details ?? [];
+    const totalSlots = m?.num_slots_total ?? 0;
+    // Fill empty slots if we know total
+    const slotRows = totalSlots > 0 ? slots : [];
+    // Pad to totalSlots if needed
+    while (slotRows.length < totalSlots) {
+      slotRows.push({ label: `SLOT ?${slotRows.length + 1}`, populated: false, size_gb: 0, mem_type: "N/A", speed_mts: 0, manufacturer: "N/A", part_number: "N/A" });
+    }
+
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", background: "radial-gradient(ellipse at top right, rgba(40,0,60,0.3) 0%, transparent 60%)" }}>
         <style>{styles}</style>
+
+        {/* HEADER */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <MemoryStick size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
             <div>
-              <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>MEMORY SUBSYSTEM</div>
-              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>Q-DIMM 512GB // HIGH-BANDWIDTH MATRIX ANALYSIS</div>
+              <div style={{ fontSize: "1.1rem", letterSpacing: "3px", fontWeight: "bold", color: `rgb(${c})` }}>
+                MEMORY SUBSYSTEM
+              </div>
+              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>
+                {m ? `${m.total_gb.toFixed(1)} GB INSTALLED \u2014 ${m.mem_type !== "N/A" ? m.mem_type : "RAM"} ${m.speed_mts > 0 ? `@ ${m.speed_mts} MT/s` : ""}` : "MEMORY DIAGNOSTICS // REAL-TIME ANALYSIS"}
+              </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <StatusBadge label="ECC ACTIVE" active={true} color={c} />
-            <StatusBadge label="XMP/EXPO" active={true} color={c} />
-            <StatusBadge label="0 ERRORS" active={true} color={c} />
+          <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+            <StatusBadge label={m?.ecc_enabled ? "ECC ACTIVE" : "ECC N/A"} active={m?.ecc_enabled ?? false} color={c} />
+            <StatusBadge label={m?.dimm_has_info ? `${m.num_slots_used} SLOTS USED` : "DIMM N/A"} active={m?.dimm_has_info ?? false} color={c} />
+            <StatusBadge label={`${m ? m.used_percent.toFixed(1) : "0"}% USED`} active={true} color={c} />
           </div>
         </div>
 
+        {/* ROW 1: GRAPHS + SLOT MATRIX */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "12px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <MiniGraph data={graphs.a} color={c} label="MEMORY ALLOCATION TIMELINE" height={90} suffix=" GB" />
-            <MiniGraph data={graphs.b} color="200,100,255" label="COMMITTED MEMORY (GB)" height={60} suffix=" GB" />
-            <MiniGraph data={graphs.c} color="255,150,255" label="PAGE FILE ACTIVITY (MB/s)" height={60} suffix=" MB/s" />
+            <MiniGraph data={memGraphs.used} color={c} label={`MEMORY USAGE \u2014 ${m ? m.used_gb.toFixed(2) + " GB / " + m.total_gb.toFixed(1) + " GB" : "Loading..."}`} height={90} suffix="%" />
+            <MiniGraph data={memGraphs.committed} color="200,100,255" label={`COMMITTED \u2014 ${m ? m.committed_gb.toFixed(1) + " GB" : "..."}`} height={60} suffix="%" />
+            <MiniGraph data={graphs.c} color="255,150,255" label={`SWAP \u2014 ${m ? m.swap_used_gb.toFixed(2) + " GB used of " + m.swap_total_gb.toFixed(1) + " GB" : "..."}`} height={60} suffix="%" />
           </div>
-          <div style={{ background: `rgba(${c},0.03)`, border: `1px solid rgba(${c},0.15)`, borderRadius: "4px", padding: "10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+
+          {/* SLOT MATRIX */}
+          <div style={{ background: `rgba(${c},0.03)`, border: `1px solid rgba(${c},0.15)`, borderRadius: "4px", padding: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
             <SectionTitle icon={MemoryStick} label="SLOT MATRIX" color={c} />
-            {["SLOT A1 — 128 GB", "SLOT A2 — 128 GB", "SLOT B1 — 128 GB", "SLOT B2 — 128 GB", "SLOT C1 — EMPTY", "SLOT C2 — EMPTY", "SLOT D1 — EMPTY", "SLOT D2 — EMPTY"].map((s, i) => (
-              <div key={i} style={{ padding: "5px 8px", background: i < 4 ? `rgba(${c},0.12)` : "rgba(255,255,255,0.02)", border: `1px solid rgba(${c},${i < 4 ? 0.3 : 0.05})`, borderRadius: "2px", fontSize: "0.6rem", fontFamily: "var(--font-mono)", color: i < 4 ? `rgb(${c})` : "rgba(255,255,255,0.2)", display: "flex", justifyContent: "space-between" }}>
-                <span>{s}</span>
-                {i < 4 && <CheckCircle size={10} style={{ color: "#00ff88" }} />}
+            {slotRows.length === 0 ? (
+              <div style={{ fontSize: "0.6rem", opacity: 0.5, fontFamily: "var(--font-mono)" }}>
+                {m ? "DIMM INFO: ROOT ACCESS NEEDED" : "LOADING..."}
               </div>
-            ))}
+            ) : (
+              slotRows.map((s: any, i: number) => (
+                <div key={i} style={{ padding: "5px 8px", background: s.populated ? `rgba(${c},0.12)` : "rgba(255,255,255,0.02)", border: `1px solid rgba(${c},${s.populated ? 0.3 : 0.05})`, borderRadius: "2px", fontSize: "0.6rem", fontFamily: "var(--font-mono)", color: s.populated ? `rgb(${c})` : "rgba(255,255,255,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>{s.label} {s.populated ? `\u2014 ${s.size_gb.toFixed(1)} GB` : "\u2014 EMPTY"}</span>
+                  {s.populated && <CheckCircle size={10} style={{ color: "#00ff88" }} />}
+                </div>
+              ))
+            )}
             <div style={{ marginTop: "4px" }}>
-              <ProgressBar label="TOTAL IN USE" value={parseFloat(inUseGB)} max={512} color={c} unit=" GB" />
+              <ProgressBar label={`IN USE: ${m ? m.used_gb.toFixed(1) : "0"} GB`} value={m ? m.used_gb : 0} max={m ? m.total_gb : 100} color={c} unit=" GB" />
             </div>
           </div>
         </div>
 
+        {/* ROW 2: DATA TABLES */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
           <Panel color={c}>
             <SectionTitle icon={MemoryStick} label="CAPACITY & USAGE" color={c} />
-            <InfoRow label="Total Installed" value="512.0 GB" color={c} status="ok" />
-            <InfoRow label="In Use" value={`${inUseGB} GB`} color={c} />
-            <InfoRow label="Available" value={`${(512 - parseFloat(inUseGB)).toFixed(1)} GB`} color={c} status="ok" />
-            <InfoRow label="Standby" value="14.9 GB" color={c} />
-            <InfoRow label="Modified" value="2.1 GB" color={c} />
-            <InfoRow label="Free" value="0.3 GB" color={c} />
-            <InfoRow label="Committed" value="59.5 / 512 GB" color={c} />
-            <InfoRow label="Cached" value="14.9 GB" color={c} />
-            <InfoRow label="Paged Pool" value="1,288 MB" color={c} />
-            <InfoRow label="Non-Paged Pool" value="859 MB" color={c} />
-            <InfoRow label="Hardware Reserved" value="157 MB" color={c} />
+            <InfoRow label="Total Installed" value={m ? `${m.total_gb.toFixed(2)} GB` : "N/A"} color={c} status="ok" />
+            <InfoRow label="In Use" value={m ? `${m.used_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Available" value={m ? `${m.available_gb.toFixed(2)} GB` : "N/A"} color={c} status="ok" />
+            <InfoRow label="Free" value={m ? `${m.free_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Cached" value={m ? `${m.cached_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Buffers" value={m ? `${m.buffers_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Shared (shmem)" value={m ? `${m.shmem_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Mapped" value={m ? `${m.mapped_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Slab" value={m ? `${m.slab_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Committed" value={m ? `${m.committed_gb.toFixed(2)} GB` : "N/A"} color={c} />
+            <InfoRow label="Swap Total" value={m ? `${m.swap_total_gb.toFixed(1)} GB` : "N/A"} color={c} />
+            <InfoRow label="Swap Used" value={m ? `${m.swap_used_gb.toFixed(2)} GB` : "N/A"} color={c} />
           </Panel>
           <Panel color={c}>
-            <SectionTitle icon={Activity} label="TIMINGS & ELECTRICAL" color={c} />
-            <InfoRow label="Speed" value="8400 MT/s" color={c} />
-            <InfoRow label="Form Factor" value="Q-DIMM (RDIMM)" color={c} />
-            <InfoRow label="CAS Latency (CL)" value="CL 28" color={c} />
-            <InfoRow label="tRCD" value="36 Clocks" color={c} />
-            <InfoRow label="tRP" value="36 Clocks" color={c} />
-            <InfoRow label="tRAS" value="38 Clocks" color={c} />
-            <InfoRow label="tRC" value="Bank Cycle 66" color={c} />
-            <InfoRow label="Gear Mode" value="Gear 1 (1:1)" color={c} />
-            <InfoRow label="Command Rate" value="1T" color={c} />
-            <InfoRow label="VDD Voltage" value="1.10 V" color={c} status="ok" />
-            <InfoRow label="VDDQ Voltage" value="1.10 V" color={c} status="ok" />
+            <SectionTitle icon={Activity} label="HARDWARE INFO" color={c} />
+            <InfoRow label="Memory Type" value={m?.mem_type || "N/A"} color={c} />
+            <InfoRow label="Form Factor" value={m?.form_factor || "N/A"} color={c} />
+            <InfoRow label="Speed" value={m?.speed_mts > 0 ? `${m.speed_mts} MT/s` : "N/A"} color={c} />
+            <InfoRow label="Slots Used" value={m?.num_slots_total > 0 ? `${m.num_slots_used} of ${m.num_slots_total}` : "N/A"} color={c} />
+            <InfoRow label="Manufacturer" value={m?.manufacturer || "N/A"} color={c} />
+            <InfoRow label="Serial Number" value={m?.serial || "N/A"} color={c} />
+            <InfoRow label="Channel Mode" value={m?.channels || "N/A"} color={c} status={m?.channels && m.channels !== "N/A" ? "ok" : undefined} />
+            <InfoRow label="ECC Status" value={m?.ecc_enabled ? "ENABLED" : (m?.dimm_has_info ? "DISABLED" : "N/A")} color={c} status={m?.ecc_enabled ? "ok" : undefined} />
+            {slotRows.filter((s: any) => s.populated).map((s: any, i: number) => (
+              <InfoRow key={i} label={s.label} value={`${s.size_gb.toFixed(0)} GB \u2014 ${s.mem_type !== "N/A" ? s.mem_type : ""} ${s.part_number !== "N/A" ? s.part_number : ""}`.trim()} color={c} />
+            ))}
           </Panel>
           <Panel color={c}>
-            <SectionTitle icon={Shield} label="CONFIGURATION & HEALTH" color={c} />
-            <InfoRow label="Channels Active" value="Quad Channel" color={c} status="ok" />
-            <InfoRow label="ECC Status" value="ACTIVE — 0 ERRORS" color={c} status="ok" />
-            <InfoRow label="Topology" value="Daisy Chain" color={c} />
-            <InfoRow label="Bank Groups" value="16" color={c} />
-            <InfoRow label="Banks" value="4 per group" color={c} />
-            <InfoRow label="Controller Freq" value="4800 MHz" color={c} />
-            <InfoRow label="SPD Extension" value="EXPO II Profile" color={c} />
-            <InfoRow label="DRAM Vendor" value="SK Hynix-Q" color={c} />
-            <InfoRow label="Burst Length" value="16 Bytes" color={c} />
-            <InfoRow label="Prefetch" value="Hardware (16x)" color={c} />
-            <InfoRow label="PMIC" value="UNLOCKED" color={c} status="ok" />
-            <InfoRow label="Heatsink" value="Graphene Vapor" color={c} />
-            <InfoRow label="Temp" value="32°C" color={c} status="ok" />
+            <SectionTitle icon={Shield} label="RUNTIME METRICS" color={c} />
+            <InfoRow label="Usage %" value={m ? `${m.used_percent.toFixed(1)}%` : "N/A"} color={c} />
+            <InfoRow label="Used (bytes)" value={m ? m.used_bytes.toLocaleString() : "N/A"} color={c} />
+            <InfoRow label="Total (bytes)" value={m ? m.total_bytes.toLocaleString() : "N/A"} color={c} />
+            <InfoRow label="Available (bytes)" value={m ? m.available_bytes.toLocaleString() : "N/A"} color={c} />
+            <InfoRow label="Swap Total" value={m?.swap_total_bytes > 0 ? `${(m.swap_total_bytes / 1073741824).toFixed(1)} GB` : "0 GB"} color={c} />
+            <InfoRow label="Swap Used" value={m?.swap_used_bytes > 0 ? `${(m.swap_used_bytes / 1073741824).toFixed(2)} GB` : "0 GB"} color={c} />
+            <InfoRow label="Uptime" value={fmtUptime(uptime)} color={c} />
           </Panel>
         </div>
       </div>

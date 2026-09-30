@@ -415,7 +415,7 @@ pub struct MemoryTelemetry {
     swap_used_bytes: u64,
     // Percentage
     used_percent: f32,
-    // Human-readable GB strings (pre-formatted for UI)
+    // Human-readable GB (pre-formatted for UI)
     total_gb: f32,
     used_gb: f32,
     available_gb: f32,
@@ -423,12 +423,12 @@ pub struct MemoryTelemetry {
     swap_total_gb: f32,
     swap_used_gb: f32,
     // From dmidecode / /proc/meminfo extras
-    mem_type: String,          // DDR4, DDR5, LPDDR5, etc.
-    form_factor: String,       // DIMM, SO-DIMM
-    speed_mts: u32,            // MT/s rating e.g. 3200
+    mem_type: String,
+    form_factor: String,
+    speed_mts: u32,
     num_slots_used: u32,
     num_slots_total: u32,
-    manufacturer: String,      // e.g. Samsung, Hynix
+    manufacturer: String,
     serial: String,
     cached_gb: f32,
     buffers_gb: f32,
@@ -436,6 +436,22 @@ pub struct MemoryTelemetry {
     mapped_gb: f32,
     slab_gb: f32,
     committed_gb: f32,
+    // Extra fields for deep scan page
+    slot_details: Vec<SlotInfo>,  // Per-slot info from dmidecode
+    channels: String,             // Single/Dual/Quad channel
+    ecc_enabled: bool,
+    dimm_has_info: bool,          // True if dmidecode returned data
+}
+
+#[derive(Serialize, Clone)]
+pub struct SlotInfo {
+    label: String,
+    size_gb: f32,
+    populated: bool,
+    mem_type: String,
+    speed_mts: u32,
+    manufacturer: String,
+    part_number: String,
 }
 
 // ─── Helper: read key from /proc/meminfo ─────────────────────────────────────
@@ -455,9 +471,30 @@ fn read_meminfo_kb(key: &str) -> u64 {
     0
 }
 
-// ─── Helper: run dmidecode to get DIMM info ───────────────────────────────────
-fn get_dimm_info() -> (String, String, u32, u32, u32, String, String) {
-    // Returns: (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial)
+// ─── Helper: run dmidecode (tries sudo, then direct) ─────────────────────────
+fn run_dmidecode() -> String {
+    // Try direct first (works when running as root in ISO)
+    if let Ok(out) = Command::new("dmidecode").args(["-t", "17"]).output() {
+        if !out.stdout.is_empty() {
+            if let Ok(text) = String::from_utf8(out.stdout) {
+                if text.contains("Memory Device") {
+                    return text;
+                }
+            }
+        }
+    }
+    // Fallback: try with sudo (non-interactive)
+    if let Ok(out) = Command::new("sudo").args(["-n", "dmidecode", "-t", "17"]).output() {
+        if let Ok(text) = String::from_utf8(out.stdout) {
+            if text.contains("Memory Device") {
+                return text;
+            }
+        }
+    }
+    String::new()
+}
+
+fn get_dimm_info() -> (String, String, u32, u32, u32, String, String, Vec<SlotInfo>, String, bool, bool) {
     let mut mem_type = "N/A".to_string();
     let mut form_factor = "N/A".to_string();
     let mut speed_mts: u32 = 0;
@@ -465,49 +502,102 @@ fn get_dimm_info() -> (String, String, u32, u32, u32, String, String) {
     let mut slots_total: u32 = 0;
     let mut manufacturer = "N/A".to_string();
     let mut serial = "N/A".to_string();
+    let mut slot_details: Vec<SlotInfo> = Vec::new();
+    let mut ecc_enabled = false;
+    let letters = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
-    // Try dmidecode (requires root, works on Linux)
-    if let Ok(output) = Command::new("dmidecode").args(["-t", "17"]).output() {
-        if let Ok(text) = String::from_utf8(output.stdout) {
-            let mut in_device = false;
-            let mut current_size_valid = false;
-            for line in text.lines() {
-                let l = line.trim();
-                if l == "Memory Device" { in_device = true; slots_total += 1; current_size_valid = false; }
-                if !in_device { continue; }
-                if l.starts_with("Size:") {
-                    let sz = l.replace("Size:", "").trim().to_string();
-                    if !sz.contains("No Module") && !sz.is_empty() && sz != "Unknown" {
-                        slots_used += 1;
-                        current_size_valid = true;
-                    }
+    let text = run_dmidecode();
+    let has_info = !text.is_empty();
+
+    if has_info {
+        // Parse per-slot info
+        let mut current: Option<SlotInfo> = None;
+        let mut slot_idx: usize = 0;
+
+        for line in text.lines() {
+            let l = line.trim();
+
+            if l == "Memory Device" {
+                // Save previous slot
+                if let Some(s) = current.take() {
+                    slot_details.push(s);
                 }
-                if current_size_valid {
-                    if l.starts_with("Type:") && !l.contains("Error") {
-                        mem_type = l.replace("Type:", "").trim().to_string();
-                    }
-                    if l.starts_with("Form Factor:") {
-                        form_factor = l.replace("Form Factor:", "").trim().to_string();
-                    }
-                    if l.starts_with("Configured Memory Speed:") || l.starts_with("Speed:") {
-                        if speed_mts == 0 {
-                            let s = l.split_once(':').map(|p| p.1.trim()).unwrap_or("");
-                            speed_mts = s.split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let pair = slot_idx / 2;
+                let chan = if pair < letters.len() { letters[pair] } else { "?" };
+                let num = slot_idx % 2 + 1;
+                current = Some(SlotInfo {
+                    label: format!("SLOT {}{}", chan, num),
+                    size_gb: 0.0,
+                    populated: false,
+                    mem_type: "N/A".to_string(),
+                    speed_mts: 0,
+                    manufacturer: "N/A".to_string(),
+                    part_number: "N/A".to_string(),
+                });
+                slot_idx += 1;
+                slots_total += 1;
+                continue;
+            }
+
+            if let Some(ref mut s) = current {
+                if l.starts_with("Size:") {
+                    let sz_str = l.replace("Size:", "").trim().to_string();
+                    if !sz_str.contains("No Module") && sz_str != "Unknown" && !sz_str.is_empty() {
+                        // Parse GB from e.g. "8 GB" or "8192 MB"
+                        let parts: Vec<&str> = sz_str.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            let val: f32 = parts[0].parse().unwrap_or(0.0);
+                            s.size_gb = if parts[1].to_uppercase() == "MB" { val / 1024.0 } else { val };
                         }
+                        s.populated = true;
+                        slots_used += 1;
                     }
-                    if l.starts_with("Manufacturer:") && manufacturer == "N/A" {
-                        manufacturer = l.replace("Manufacturer:", "").trim().to_string();
-                        if manufacturer == "Unknown" { manufacturer = "N/A".to_string(); }
+                } else if l.starts_with("Type:") && !l.contains("Error") && !l.contains("Detail") {
+                    let t = l.replace("Type:", "").trim().to_string();
+                    if t != "Unknown" { s.mem_type = t.clone(); if mem_type == "N/A" { mem_type = t; } }
+                } else if l.starts_with("Form Factor:") {
+                    let ff = l.replace("Form Factor:", "").trim().to_string();
+                    if ff != "Unknown" { s.mem_type = s.mem_type.clone(); form_factor = ff; }
+                } else if l.starts_with("Configured Memory Speed:") {
+                    let spd = l.split(':').nth(1).unwrap_or("").trim().split_whitespace().next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+                    if spd > 0 { s.speed_mts = spd; if speed_mts == 0 { speed_mts = spd; } }
+                } else if l.starts_with("Speed:") && s.speed_mts == 0 {
+                    let spd = l.split(':').nth(1).unwrap_or("").trim().split_whitespace().next().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+                    if spd > 0 { s.speed_mts = spd; if speed_mts == 0 { speed_mts = spd; } }
+                } else if l.starts_with("Manufacturer:") {
+                    let m = l.replace("Manufacturer:", "").trim().to_string();
+                    if m != "Unknown" && !m.is_empty() {
+                        s.manufacturer = m.clone();
+                        if manufacturer == "N/A" { manufacturer = m; }
                     }
-                    if l.starts_with("Serial Number:") && serial == "N/A" {
-                        let s = l.replace("Serial Number:", "").trim().to_string();
-                        if s != "Unknown" && !s.is_empty() { serial = s; }
-                    }
+                } else if l.starts_with("Serial Number:") && serial == "N/A" {
+                    let sr = l.replace("Serial Number:", "").trim().to_string();
+                    if sr != "Unknown" && !sr.is_empty() { serial = sr.clone(); }
+                    serial = sr;
+                } else if l.starts_with("Part Number:") {
+                    let pn = l.replace("Part Number:", "").trim().to_string();
+                    if pn != "Unknown" && !pn.is_empty() { s.part_number = pn; }
+                } else if l.to_lowercase().contains("ecc") {
+                    ecc_enabled = true;
                 }
             }
         }
+        if let Some(s) = current.take() {
+            slot_details.push(s);
+        }
     }
-    (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial)
+
+    // Detect channel mode from slot count
+    let channels = match slots_used {
+        1 => "Single Channel",
+        2 => "Dual Channel",
+        4 => "Quad Channel",
+        6 => "Hex Channel",
+        8 => "Octa Channel",
+        _ => "N/A",
+    }.to_string();
+
+    (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial, slot_details, channels, ecc_enabled, has_info)
 }
 
 #[tauri::command]
@@ -527,15 +617,16 @@ fn get_memory_telemetry(state: tauri::State<SysState>) -> MemoryTelemetry {
     let used_pct = if total > 0 { (used as f32 / total as f32) * 100.0 } else { 0.0 };
 
     // /proc/meminfo extras (Linux)
-    let cached_bytes   = read_meminfo_kb("Cached:");
-    let buffers_bytes  = read_meminfo_kb("Buffers:");
-    let shmem_bytes    = read_meminfo_kb("Shmem:");
-    let mapped_bytes   = read_meminfo_kb("Mapped:");
-    let slab_bytes     = read_meminfo_kb("Slab:");
-    let committed_bytes= read_meminfo_kb("Committed_AS:");
+    let cached_bytes    = read_meminfo_kb("Cached:");
+    let buffers_bytes   = read_meminfo_kb("Buffers:");
+    let shmem_bytes     = read_meminfo_kb("Shmem:");
+    let mapped_bytes    = read_meminfo_kb("Mapped:");
+    let slab_bytes      = read_meminfo_kb("Slab:");
+    let committed_bytes = read_meminfo_kb("Committed_AS:");
 
     // DIMM hardware info
-    let (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial) = get_dimm_info();
+    let (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial,
+         slot_details, channels, ecc_enabled, dimm_has_info) = get_dimm_info();
 
     MemoryTelemetry {
         total_bytes: total,
@@ -564,6 +655,10 @@ fn get_memory_telemetry(state: tauri::State<SysState>) -> MemoryTelemetry {
         mapped_gb: to_gb(mapped_bytes),
         slab_gb: to_gb(slab_bytes),
         committed_gb: to_gb(committed_bytes),
+        slot_details,
+        channels,
+        ecc_enabled,
+        dimm_has_info,
     }
 }
 
