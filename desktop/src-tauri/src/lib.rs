@@ -473,17 +473,15 @@ fn read_meminfo_kb(key: &str) -> u64 {
 
 // ─── Helper: run dmidecode (tries sudo, then direct) ─────────────────────────
 fn run_dmidecode() -> String {
-    // Try direct first (works when running as root in ISO)
+    // 1. Direct call (works as root in ISO)
     if let Ok(out) = Command::new("dmidecode").args(["-t", "17"]).output() {
-        if !out.stdout.is_empty() {
-            if let Ok(text) = String::from_utf8(out.stdout) {
-                if text.contains("Memory Device") {
-                    return text;
-                }
+        if let Ok(text) = String::from_utf8(out.stdout) {
+            if text.contains("Memory Device") {
+                return text;
             }
         }
     }
-    // Fallback: try with sudo (non-interactive)
+    // 2. sudo -n (non-interactive, works if sudoers allows it)
     if let Ok(out) = Command::new("sudo").args(["-n", "dmidecode", "-t", "17"]).output() {
         if let Ok(text) = String::from_utf8(out.stdout) {
             if text.contains("Memory Device") {
@@ -492,6 +490,62 @@ fn run_dmidecode() -> String {
         }
     }
     String::new()
+}
+
+// Convert lshw memory output to dmidecode-compatible info
+fn get_lshw_memory() -> (String, String, u32, Vec<SlotInfo>) {
+    let mut mem_type = String::new();
+    let mut form_factor = String::new();
+    let mut speed_mts: u32 = 0;
+    let mut slots: Vec<SlotInfo> = Vec::new();
+
+    // Try lshw -c memory
+    let out = Command::new("lshw").args(["-c", "memory", "-short"]).output()
+        .or_else(|_| Command::new("lshw").args(["-c", "memory"]).output());
+
+    if let Ok(output) = out {
+        if let Ok(text) = String::from_utf8(output.stdout) {
+            for line in text.lines() {
+                let l = line.trim();
+                // lshw -short: columns are: H/W path | Device | Class | Description
+                if l.contains("DIMM") || l.contains("DDR") || l.contains("SDRAM") {
+                    for part in l.split_whitespace() {
+                        if part.starts_with("DDR") || part.starts_with("LPDDR") || part.starts_with("SDRAM") {
+                            if mem_type.is_empty() { mem_type = part.to_string(); }
+                        }
+                        if part.ends_with("MT/s") || part.ends_with("MHz") {
+                            if let Ok(s) = part.trim_end_matches("MT/s").trim_end_matches("MHz").parse::<u32>() {
+                                if speed_mts == 0 { speed_mts = s; }
+                            }
+                        }
+                    }
+                    let size_str = l.split_whitespace().find(|p| p.ends_with("GiB") || p.ends_with("MiB") || p.ends_with("GB") || p.ends_with("MB")).unwrap_or("0");
+                    let size_gb: f32 = if size_str.ends_with("GiB") || size_str.ends_with("GB") {
+                        size_str.trim_end_matches("GiB").trim_end_matches("GB").parse().unwrap_or(0.0)
+                    } else if size_str.ends_with("MiB") || size_str.ends_with("MB") {
+                        size_str.trim_end_matches("MiB").trim_end_matches("MB").parse::<f32>().unwrap_or(0.0) / 1024.0
+                    } else { 0.0 };
+
+                    if size_gb > 0.0 {
+                        slots.push(SlotInfo {
+                            label: format!("SLOT {}", slots.len() + 1),
+                            size_gb,
+                            populated: true,
+                            mem_type: mem_type.clone(),
+                            speed_mts,
+                            manufacturer: "N/A".to_string(),
+                            part_number: "N/A".to_string(),
+                        });
+                    }
+                }
+                if l.contains("DIMM") && form_factor.is_empty() {
+                    if l.contains("SO-DIMM") { form_factor = "SO-DIMM".to_string(); }
+                    else { form_factor = "DIMM".to_string(); }
+                }
+            }
+        }
+    }
+    (mem_type, form_factor, speed_mts, slots)
 }
 
 fn get_dimm_info() -> (String, String, u32, u32, u32, String, String, Vec<SlotInfo>, String, bool, bool) {
@@ -572,8 +626,7 @@ fn get_dimm_info() -> (String, String, u32, u32, u32, String, String, Vec<SlotIn
                     }
                 } else if l.starts_with("Serial Number:") && serial == "N/A" {
                     let sr = l.replace("Serial Number:", "").trim().to_string();
-                    if sr != "Unknown" && !sr.is_empty() { serial = sr.clone(); }
-                    serial = sr;
+                    if sr != "Unknown" && !sr.is_empty() { serial = sr; }
                 } else if l.starts_with("Part Number:") {
                     let pn = l.replace("Part Number:", "").trim().to_string();
                     if pn != "Unknown" && !pn.is_empty() { s.part_number = pn; }
@@ -584,6 +637,17 @@ fn get_dimm_info() -> (String, String, u32, u32, u32, String, String, Vec<SlotIn
         }
         if let Some(s) = current.take() {
             slot_details.push(s);
+        }
+    } else {
+        // dmidecode not available — try lshw as fallback
+        let (lt, lff, lspd, lslots) = get_lshw_memory();
+        if !lslots.is_empty() || !lt.is_empty() {
+            if mem_type == "N/A" && !lt.is_empty() { mem_type = lt; }
+            if form_factor == "N/A" && !lff.is_empty() { form_factor = lff; }
+            if speed_mts == 0 { speed_mts = lspd; }
+            slots_used = lslots.len() as u32;
+            slots_total = lslots.len() as u32;
+            slot_details = lslots;
         }
     }
 
@@ -597,7 +661,8 @@ fn get_dimm_info() -> (String, String, u32, u32, u32, String, String, Vec<SlotIn
         _ => "N/A",
     }.to_string();
 
-    (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial, slot_details, channels, ecc_enabled, has_info)
+    let final_has_info = !slot_details.is_empty() || mem_type != "N/A" || speed_mts > 0;
+    (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial, slot_details, channels, ecc_enabled, final_has_info)
 }
 
 #[tauri::command]

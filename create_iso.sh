@@ -56,6 +56,10 @@ open-vm-tools-desktop
 virtualbox-guest-x11
 virtualbox-guest-utils
 spice-vdagent
+dmidecode
+lshw
+pciutils
+usbutils
 EOF
 
 # Configure the OS to automatically log in and start our UI without a password!

@@ -305,9 +305,10 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   if (type === "sys_memory") {
     const c = "255,0,255";
     const [memData, setMemData] = useState<any>(null);
-    const [memGraphs, setMemGraphs] = useState<{ used: number[], committed: number[] }>({
+    const [memGraphs, setMemGraphs] = useState<{ used: number[], committed: number[], swap: number[] }>({
       used: Array(50).fill(0),
       committed: Array(50).fill(0),
+      swap: Array(50).fill(0),
     });
 
     useEffect(() => {
@@ -317,9 +318,12 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           const m: any = await invoke('get_memory_telemetry');
           if (!alive) return;
           setMemData(m);
+          const swapPct = m.swap_total_gb > 0 ? Math.round((m.swap_used_gb / m.swap_total_gb) * 100) : 0;
+          const committedPct = m.total_gb > 0 ? Math.round((m.committed_gb / m.total_gb) * 100) : 0;
           setMemGraphs(prev => ({
             used: [...prev.used.slice(1), Math.round(m.used_percent)],
-            committed: [...prev.committed.slice(1), Math.round((m.committed_gb / m.total_gb) * 100)],
+            committed: [...prev.committed.slice(1), committedPct],
+            swap: [...prev.swap.slice(1), swapPct],
           }));
         } catch (_) {}
       };
@@ -365,9 +369,9 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         {/* ROW 1: GRAPHS + SLOT MATRIX */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "12px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <MiniGraph data={memGraphs.used} color={c} label={`MEMORY USAGE \u2014 ${m ? m.used_gb.toFixed(2) + " GB / " + m.total_gb.toFixed(1) + " GB" : "Loading..."}`} height={90} suffix="%" />
-            <MiniGraph data={memGraphs.committed} color="200,100,255" label={`COMMITTED \u2014 ${m ? m.committed_gb.toFixed(1) + " GB" : "..."}`} height={60} suffix="%" />
-            <MiniGraph data={graphs.c} color="255,150,255" label={`SWAP \u2014 ${m ? m.swap_used_gb.toFixed(2) + " GB used of " + m.swap_total_gb.toFixed(1) + " GB" : "..."}`} height={60} suffix="%" />
+            <MiniGraph data={memGraphs.used} color={c} label={`MEMORY USAGE — ${m ? m.used_gb.toFixed(2) + " GB / " + m.total_gb.toFixed(1) + " GB" : "Loading..."}`} height={90} suffix="%" />
+            <MiniGraph data={memGraphs.committed} color="200,100,255" label={`COMMITTED — ${m ? m.committed_gb.toFixed(1) + " GB" : "..."}`} height={60} suffix="%" />
+            <MiniGraph data={memGraphs.swap} color="255,150,255" label={`SWAP — ${m ? m.swap_used_gb.toFixed(2) + " GB used of " + m.swap_total_gb.toFixed(1) + " GB" : "..."}`} height={60} suffix="%" />
           </div>
 
           {/* SLOT MATRIX */}
