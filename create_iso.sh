@@ -60,6 +60,7 @@ dmidecode
 lshw
 pciutils
 usbutils
+alsa-utils
 EOF
 
 # Configure the OS to automatically log in and start our UI without a password!

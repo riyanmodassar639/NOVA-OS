@@ -899,16 +899,29 @@ fn get_network_telemetry() -> NetworkTelemetry {
     let mut rx_bytes: u64 = 0;
     let mut tx_bytes: u64 = 0;
 
-    // Find primary interface (not lo)
-    if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
-        for entry in entries.flatten() {
-            let iface = entry.file_name().to_string_lossy().to_string();
-            if iface == "lo" { continue; }
-            // Check if it has an IP (operstate = up or has IP)
-            let operstate = read_sysfs(&format!("/sys/class/net/{}/operstate", iface))
-                .unwrap_or_default();
-            if operstate.trim() == "up" || interface == "N/A" {
-                interface = iface.clone();
+    // Find primary interface via default route first
+    let route = run_cmd("ip", &["route", "show", "default"]);
+    for line in route.lines() {
+        if line.starts_with("default via") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if let Some(dev_idx) = parts.iter().position(|&p| p == "dev") {
+                if dev_idx + 1 < parts.len() {
+                    interface = parts[dev_idx + 1].to_string();
+                    break;
+                }
+            }
+        }
+    }
+
+    if interface == "N/A" {
+        if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+            for entry in entries.flatten() {
+                let iface = entry.file_name().to_string_lossy().to_string();
+                if iface == "lo" { continue; }
+                let operstate = read_sysfs(&format!("/sys/class/net/{}/operstate", iface)).unwrap_or_default();
+                if operstate.trim() == "up" || interface == "N/A" {
+                    interface = iface.clone();
+                }
             }
         }
     }
@@ -999,8 +1012,8 @@ fn get_storage_telemetry() -> StorageTelemetry {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 7 { continue; }
         let fs_type = parts[1];
-        if skip_fs.iter().any(|s| fs_type.starts_with(s)) { continue; }
         let mount = parts[6];
+        if skip_fs.iter().any(|s| fs_type.starts_with(s)) && mount != "/" { continue; }
         if mount.starts_with("/sys") || mount.starts_with("/proc") || mount.starts_with("/dev") { continue; }
 
         let parse_gb = |s: &str| s.trim_end_matches('G').trim_end_matches('B').parse::<f32>().unwrap_or(0.0);
@@ -1137,6 +1150,107 @@ fn get_system_info(state: tauri::State<SysState>) -> SystemInfo {
     }
 }
 
+#[derive(Serialize, Clone)]
+pub struct AudioTelemetry {
+    chip: String,
+    driver: String,
+    state: String,
+}
+
+#[tauri::command]
+fn get_audio_telemetry() -> AudioTelemetry {
+    let mut chip = "N/A".to_string();
+    let mut driver = "N/A".to_string();
+    let state = "Active".to_string();
+
+    let aplay = run_cmd("aplay", &["-l"]);
+    for line in aplay.lines() {
+        if line.starts_with("card ") {
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() > 1 {
+                let name = parts[1].split('[').next().unwrap_or("").trim();
+                if chip == "N/A" {
+                    chip = name.to_string();
+                }
+            }
+        }
+    }
+    
+    if let Ok(modules) = std::fs::read_to_string("/proc/asound/modules") {
+        if let Some(first) = modules.lines().next() {
+            driver = first.split_whitespace().nth(1).unwrap_or("N/A").to_string();
+        }
+    }
+
+    AudioTelemetry { chip, driver, state }
+}
+
+#[derive(Serialize, Clone)]
+pub struct InputTelemetry {
+    keyboard: String,
+    mouse: String,
+    usb_devices: u32,
+}
+
+#[tauri::command]
+fn get_input_telemetry() -> InputTelemetry {
+    let mut keyboard = "N/A".to_string();
+    let mut mouse = "N/A".to_string();
+    let mut usb_devices = 0;
+
+    if let Ok(devices) = std::fs::read_to_string("/proc/bus/input/devices") {
+        for block in devices.split("\n\n") {
+            if block.contains("Name=") {
+                let name_line = block.lines().find(|l| l.starts_with("N: Name=")).unwrap_or("");
+                let name = name_line.replace("N: Name=", "").replace('\"', "");
+                if block.to_lowercase().contains("keyboard") && keyboard == "N/A" {
+                    keyboard = name.clone();
+                }
+                if (block.to_lowercase().contains("mouse") || block.to_lowercase().contains("point")) && mouse == "N/A" {
+                    mouse = name;
+                }
+            }
+        }
+    }
+
+    if let Ok(entries) = std::fs::read_dir("/sys/bus/usb/devices") {
+        usb_devices = entries.count() as u32;
+    }
+
+    InputTelemetry { keyboard, mouse, usb_devices }
+}
+
+#[derive(Serialize, Clone)]
+pub struct DisplayTelemetry {
+    resolution: String,
+}
+
+#[tauri::command]
+fn get_display_telemetry() -> DisplayTelemetry {
+    let mut resolution = "N/A".to_string();
+    
+    // Check DRM sysfs for active resolution
+    if let Ok(entries) = std::fs::read_dir("/sys/class/drm") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.join("status").exists() {
+                if let Ok(status) = std::fs::read_to_string(path.join("status")) {
+                    if status.trim() == "connected" {
+                        if let Ok(modes) = std::fs::read_to_string(path.join("modes")) {
+                            if let Some(first_mode) = modes.lines().next() {
+                                resolution = first_mode.to_string();
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    DisplayTelemetry { resolution }
+}
+
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1158,6 +1272,9 @@ pub fn run() {
             get_network_telemetry,
             get_storage_telemetry,
             get_system_info,
+            get_audio_telemetry,
+            get_input_telemetry,
+            get_display_telemetry,
             launch_external_app,
             execute_system_command,
         ])

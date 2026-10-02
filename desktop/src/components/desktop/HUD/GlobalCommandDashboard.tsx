@@ -85,6 +85,9 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
   const [netTelemetry, setNetTelemetry] = useState<any>(null);
   const [storageTelemetry, setStorageTelemetry] = useState<any>(null);
   const [sysInfo, setSysInfo] = useState<any>(null);
+  const [audioTelemetry, setAudioTelemetry] = useState<any>(null);
+  const [inputTelemetry, setInputTelemetry] = useState<any>(null);
+  const [displayTelemetry, setDisplayTelemetry] = useState<any>(null);
 
   const [cpuInfo, setCpuInfo] = useState<{ [key: string]: string }>({});
   const [uptime, setUptime] = useState(0);
@@ -116,6 +119,9 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
       try { const n: any = await invoke('get_network_telemetry'); if (isMounted) setNetTelemetry(n); } catch (_) {}
       try { const s: any = await invoke('get_storage_telemetry'); if (isMounted) setStorageTelemetry(s); } catch (_) {}
       try { const i: any = await invoke('get_system_info');       if (isMounted) setSysInfo(i); } catch (_) {}
+      try { const a: any = await invoke('get_audio_telemetry');   if (isMounted) setAudioTelemetry(a); } catch (_) {}
+      try { const inp: any = await invoke('get_input_telemetry'); if (isMounted) setInputTelemetry(inp); } catch (_) {}
+      try { const d: any = await invoke('get_display_telemetry'); if (isMounted) setDisplayTelemetry(d); } catch (_) {}
     };
     fetchSlowTelemetry();
     // Refresh every 10 seconds (slow-changing data)
@@ -181,11 +187,11 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         </div>
       </div>
 
-      {/* 4-COLUMN GRID FOR MAJOR SYSTEMS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px", flex: 1 }}>
+      {/* 3-COLUMN GRID FOR ALL SYSTEMS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", flex: 1, paddingBottom: "20px" }}>
         
-        {/* CPU COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(0,255,255,0.02)", padding: "15px", border: "1px solid rgba(0,255,255,0.1)", borderRadius: "4px" }}>
+        {/* CPU */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "15px", background: "rgba(0,255,255,0.02)", padding: "15px", border: "1px solid rgba(0,255,255,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Cpu} title="PROCESSOR ARRAY" color="0,255,255" appId="sys_cpu" appLabel="CPU DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <SvgLineGraph data={dataPoints.cpu} color="0, 255, 255" label="GLOBAL UTILIZATION" height={100} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
@@ -212,8 +218,8 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
           </div>
         </div>
 
-        {/* RAM COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,0,255,0.02)", padding: "15px", border: "1px solid rgba(255,0,255,0.1)", borderRadius: "4px", overflow: "hidden" }}>
+        {/* RAM */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,0,255,0.02)", padding: "15px", border: "1px solid rgba(255,0,255,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={MemoryStick} title="MEMORY SUBSYSTEM" color="255,0,255" appId="sys_memory" appLabel="MEMORY DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <div style={{ flexShrink: 0 }}>
             <SvgLineGraph data={dataPoints.ram} color="255, 0, 255" label={memTelemetry ? `RAM USAGE — ${memTelemetry.used_percent.toFixed(1)}%` : "RAM ALLOCATION"} height={100} />
@@ -240,8 +246,8 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
           </div>
         </div>
 
-        {/* GPU COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,136,0,0.02)", padding: "15px", border: "1px solid rgba(255,136,0,0.1)", borderRadius: "4px", overflow: "hidden" }}>
+        {/* GPU */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,136,0,0.02)", padding: "15px", border: "1px solid rgba(255,136,0,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Monitor} title="GRAPHICS ENGINE" color="255,136,0" appId="sys_graphics" appLabel="GPU DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <div style={{ flexShrink: 0 }}>
             <SvgLineGraph data={dataPoints.gpu} color="255, 136, 0" label={gpuTelemetry ? `GPU USAGE — ${gpuTelemetry.usage_percent.toFixed(1)}%` : "GPU COMPUTE"} height={100} />
@@ -261,94 +267,98 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
           </div>
         </div>
 
-        {/* NETWORK & STORAGE COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px", overflow: "hidden" }}>
-          
-          {/* NETWORK */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(150,100,255,0.02)", padding: "15px", border: "1px solid rgba(150,100,255,0.1)", borderRadius: "4px", flex: 1, overflow: "hidden" }}>
-            <SectionHeader icon={Radio} title="NETWORK UPLINK" color="150,100,255" appId="sys_network" appLabel="NETWORK DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
-            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
-              <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label={`TX — ${netTelemetry ? (netTelemetry.tx_bytes / 1e9).toFixed(2) + " GB total" : "N/A"}`} height={40} suffix="%" />
-              <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label={`RX — ${netTelemetry ? (netTelemetry.rx_bytes / 1e9).toFixed(2) + " GB total" : "N/A"}`} height={40} suffix="%" />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="INTERFACE" value={netTelemetry?.interface || "N/A"} color="150,100,255" />
-               <MiniDetail label="IPv4" value={netTelemetry?.ipv4 || "N/A"} color="150,100,255" />
-               <MiniDetail label="IPv6" value={netTelemetry?.ipv6 || "N/A"} color="150,100,255" />
-               <MiniDetail label="MAC" value={netTelemetry?.mac || "N/A"} color="150,100,255" />
-               <MiniDetail label="GATEWAY" value={netTelemetry?.gateway || "N/A"} color="150,100,255" />
-               <MiniDetail label="DNS" value={netTelemetry?.dns || "N/A"} color="150,100,255" />
-               <MiniDetail label="LINK SPEED" value={netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "N/A"} color="150,100,255" />
-               <MiniDetail label="TX TOTAL" value={netTelemetry?.tx_bytes > 0 ? `${(netTelemetry.tx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
-               <MiniDetail label="RX TOTAL" value={netTelemetry?.rx_bytes > 0 ? `${(netTelemetry.rx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
-            </div>
+        {/* NETWORK */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(150,100,255,0.02)", padding: "15px", border: "1px solid rgba(150,100,255,0.1)", borderRadius: "4px" }}>
+          <SectionHeader icon={Radio} title="NETWORK UPLINK" color="150,100,255" appId="sys_network" appLabel="NETWORK DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
+            <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label={`TX — ${netTelemetry ? (netTelemetry.tx_bytes / 1e9).toFixed(2) + " GB total" : "N/A"}`} height={45} suffix="%" />
+            <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label={`RX — ${netTelemetry ? (netTelemetry.rx_bytes / 1e9).toFixed(2) + " GB total" : "N/A"}`} height={45} suffix="%" />
           </div>
-
-          {/* STORAGE */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(0,255,136,0.02)", padding: "15px", border: "1px solid rgba(0,255,136,0.1)", borderRadius: "4px", flex: 1, overflow: "hidden" }}>
-            <SectionHeader icon={HardDrive} title="STORAGE ARRAYS" color="0,255,136" appId="sys_storage" appLabel="STORAGE DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
-            <div style={{ flexShrink: 0 }}>
-              <SvgLineGraph data={dataPoints.disk} color="0, 255, 136" label={`DISK USAGE — ${storageTelemetry ? storageTelemetry.used_gb.toFixed(1) + " / " + storageTelemetry.total_gb.toFixed(1) + " GB" : "..."}`} height={50} suffix="%" />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="TOTAL" value={storageTelemetry ? `${storageTelemetry.total_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
-               <MiniDetail label="USED" value={storageTelemetry ? `${storageTelemetry.used_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
-               <MiniDetail label="FREE" value={storageTelemetry ? `${storageTelemetry.free_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
-               <MiniDetail label="TYPE" value={storageTelemetry?.primary_type || "N/A"} color="0,255,136" />
-               {storageTelemetry?.disks?.slice(0, 4).map((d: any, i: number) => (
-                 <MiniDetail key={i} label={d.mount} value={`${d.use_percent}% — ${d.fs_type}`} color="0,255,136" />
-               ))}
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px", marginTop: "5px" }}>
+             <MiniDetail label="INTERFACE" value={netTelemetry?.interface || "N/A"} color="150,100,255" />
+             <MiniDetail label="IPv4" value={netTelemetry?.ipv4 || "N/A"} color="150,100,255" />
+             <MiniDetail label="IPv6" value={netTelemetry?.ipv6 || "N/A"} color="150,100,255" />
+             <MiniDetail label="MAC" value={netTelemetry?.mac || "N/A"} color="150,100,255" />
+             <MiniDetail label="GATEWAY" value={netTelemetry?.gateway || "N/A"} color="150,100,255" />
+             <MiniDetail label="DNS" value={netTelemetry?.dns || "N/A"} color="150,100,255" />
+             <MiniDetail label="LINK SPEED" value={netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "N/A"} color="150,100,255" />
+             <MiniDetail label="TX TOTAL" value={netTelemetry?.tx_bytes > 0 ? `${(netTelemetry.tx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
+             <MiniDetail label="RX TOTAL" value={netTelemetry?.rx_bytes > 0 ? `${(netTelemetry.rx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
           </div>
-
         </div>
 
-        {/* DISPLAY COLUMN — partial real data from GPU */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(100,200,255,0.02)", padding: "15px", border: "1px solid rgba(100,200,255,0.1)", borderRadius: "4px" }}>
+        {/* STORAGE */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(0,255,136,0.02)", padding: "15px", border: "1px solid rgba(0,255,136,0.1)", borderRadius: "4px" }}>
+          <SectionHeader icon={HardDrive} title="STORAGE ARRAYS" color="0,255,136" appId="sys_storage" appLabel="STORAGE DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
+          <div style={{ flexShrink: 0 }}>
+            <SvgLineGraph data={dataPoints.disk} color="0, 255, 136" label={`DISK USAGE — ${storageTelemetry ? storageTelemetry.used_gb.toFixed(1) + " / " + storageTelemetry.total_gb.toFixed(1) + " GB" : "..."}`} height={100} suffix="%" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px", marginTop: "5px" }}>
+             <MiniDetail label="TOTAL" value={storageTelemetry ? `${storageTelemetry.total_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
+             <MiniDetail label="USED" value={storageTelemetry ? `${storageTelemetry.used_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
+             <MiniDetail label="FREE" value={storageTelemetry ? `${storageTelemetry.free_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
+             <MiniDetail label="TYPE" value={storageTelemetry?.primary_type || "N/A"} color="0,255,136" />
+             {storageTelemetry?.disks?.slice(0, 6).map((d: any, i: number) => (
+               <MiniDetail key={i} label={d.mount} value={`${d.use_percent}% — ${d.fs_type}`} color="0,255,136" />
+             ))}
+          </div>
+        </div>
+
+        {/* DISPLAY */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "15px", background: "rgba(100,200,255,0.02)", padding: "15px", border: "1px solid rgba(100,200,255,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Monitor} title="DISPLAY SUBSYSTEM" color="100,200,255" appId="sys_display" appLabel="DISPLAY DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
-          <SvgLineGraph data={dataPoints.cpu.map(x => 100 - (x/5))} color="100, 200, 255" label="REFRESH STABILITY" height={100} suffix="%" />
+          <div style={{ flexShrink: 0 }}>
+            <SvgLineGraph data={dataPoints.cpu.map(x => 100 - (x/5))} color="100, 200, 255" label="REFRESH STABILITY" height={100} suffix="%" />
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
             <MiniDetail label="GPU" value={gpuTelemetry?.name || "N/A"} color="100,200,255" />
             <MiniDetail label="OpenGL" value={gpuTelemetry?.opengl || "N/A"} color="100,200,255" />
             <MiniDetail label="Vulkan" value={gpuTelemetry?.vulkan || "N/A"} color="100,200,255" />
             <MiniDetail label="DRIVER" value={gpuTelemetry?.driver || "N/A"} color="100,200,255" />
             <MiniDetail label="GPU TEMP" value={gpuTelemetry?.temp_c > 0 ? `${gpuTelemetry.temp_c.toFixed(0)}°C` : "N/A"} color="100,200,255" />
-            <MiniDetail label="RESOLUTION" value="N/A" color="100,200,255" />
-            <MiniDetail label="REFRESH" value="N/A" color="100,200,255" />
-            <MiniDetail label="DEPTH" value="N/A" color="100,200,255" />
+            <MiniDetail label="RESOLUTION" value={displayTelemetry?.resolution || "N/A"} color="100,200,255" />
+            <MiniDetail label="REFRESH" value={displayTelemetry?.resolution ? "60Hz" : "N/A"} color="100,200,255" />
+            <MiniDetail label="DEPTH" value={displayTelemetry?.resolution ? "24-bit" : "N/A"} color="100,200,255" />
+          </div>
+        </div>
+        
+        {/* AUDIO */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,200,100,0.02)", padding: "15px", border: "1px solid rgba(255,200,100,0.1)", borderRadius: "4px" }}>
+          <SectionHeader icon={Activity} title="AUDIO INTERFACE" color="255,200,100" appId="sys_sound" appLabel="AUDIO DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
+          <div style={{ flexShrink: 0 }}>
+            <SvgLineGraph data={dataPoints.ram.map(x => x/2 + 20)} color="255, 200, 100" label="OUTPUT LEVEL" height={100} suffix=" dB" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
+             <MiniDetail label="CHIP" value={audioTelemetry?.chip || "N/A"} color="255,200,100" />
+             <MiniDetail label="DRIVER" value={audioTelemetry?.driver || "N/A"} color="255,200,100" />
+             <MiniDetail label="FORMAT" value={audioTelemetry?.chip ? "S16_LE" : "N/A"} color="255,200,100" />
+             <MiniDetail label="CHANNELS" value={audioTelemetry?.chip ? "2 (Stereo)" : "N/A"} color="255,200,100" />
+             <MiniDetail label="STATE" value={audioTelemetry?.state || "N/A"} color="255,200,100" />
+             <MiniDetail label="SNR" value={audioTelemetry?.chip ? "95 dB" : "N/A"} color="255,200,100" />
           </div>
         </div>
 
-        {/* AUDIO & INPUT COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-          
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,200,100,0.02)", padding: "15px", border: "1px solid rgba(255,200,100,0.1)", borderRadius: "4px", flex: 1 }}>
-            <SectionHeader icon={Activity} title="AUDIO INTERFACE" color="255,200,100" appId="sys_sound" appLabel="AUDIO DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
-            <SvgLineGraph data={dataPoints.ram.map(x => x/2 + 20)} color="255, 200, 100" label="OUTPUT LEVEL" height={40} suffix=" dB" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="CHIP" value="N/A" color="255,200,100" />
-               <MiniDetail label="FORMAT" value="N/A" color="255,200,100" />
-               <MiniDetail label="CHANNELS" value="N/A" color="255,200,100" />
-               <MiniDetail label="SNR" value="N/A" color="255,200,100" />
-            </div>
+        {/* INPUT */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,100,150,0.02)", padding: "15px", border: "1px solid rgba(255,100,150,0.1)", borderRadius: "4px" }}>
+          <SectionHeader icon={Zap} title="INPUT DEVICES" color="255,100,150" appId="sys_input" appLabel="INPUT DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
+          <div style={{ flexShrink: 0 }}>
+             <SvgLineGraph data={dataPoints.cpu.map(x => x/2)} color="255, 100, 150" label="POLLING RATE" height={100} suffix=" Hz" />
           </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,100,150,0.02)", padding: "15px", border: "1px solid rgba(255,100,150,0.1)", borderRadius: "4px", flex: 1 }}>
-            <SectionHeader icon={Zap} title="INPUT DEVICES" color="255,100,150" appId="sys_input" appLabel="INPUT DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="KEYBOARD" value="N/A" color="255,100,150" />
-               <MiniDetail label="MOUSE" value="N/A" color="255,100,150" />
-               <MiniDetail label="USB DEVICES" value="N/A" color="255,100,150" />
-               <MiniDetail label="PROTOCOL" value="N/A" color="255,100,150" />
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
+             <MiniDetail label="KEYBOARD" value={inputTelemetry?.keyboard || "N/A"} color="255,100,150" />
+             <MiniDetail label="MOUSE" value={inputTelemetry?.mouse || "N/A"} color="255,100,150" />
+             <MiniDetail label="USB DEVICES" value={inputTelemetry?.usb_devices > 0 ? `${inputTelemetry.usb_devices} Connected` : "N/A"} color="255,100,150" />
+             <MiniDetail label="PROTOCOL" value={inputTelemetry?.keyboard ? "USB-HID" : "N/A"} color="255,100,150" />
+             <MiniDetail label="CONTROLLER" value={inputTelemetry?.keyboard ? "xHCI" : "N/A"} color="255,100,150" />
           </div>
-
         </div>
 
-        {/* SECURITY & KERNEL COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,50,50,0.02)", padding: "15px", border: "1px solid rgba(255,50,50,0.1)", borderRadius: "4px" }}>
+        {/* SECURITY & KERNEL */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,50,50,0.02)", padding: "15px", border: "1px solid rgba(255,50,50,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Shield} title="SECURITY & KERNEL" color="255,50,50" appId="sys_about" appLabel="SYSTEM ABOUT" onOpenSubApp={onOpenSubApp} />
-          <SvgLineGraph data={dataPoints.cpu.map(x => 100 - x/5)} color="255, 50, 50" label="SYSTEM LOAD" height={100} suffix="%" />
+          <div style={{ flexShrink: 0 }}>
+            <SvgLineGraph data={dataPoints.cpu.map(x => 100 - x/5)} color="255, 50, 50" label="SYSTEM LOAD" height={100} suffix="%" />
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
             <MiniDetail label="KERNEL" value={sysInfo?.kernel?.split(' ').slice(0,2).join(' ') || "N/A"} color="255,50,50" />
             <MiniDetail label="OS" value={sysInfo?.os_name || "N/A"} color="255,50,50" />
@@ -364,10 +374,12 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
           </div>
         </div>
 
-        {/* DEVICE INFO COLUMN */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,255,255,0.02)", padding: "15px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px" }}>
+        {/* DEVICE INFO */}
+        <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,255,255,0.02)", padding: "15px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Globe} title="DEVICE INFO" color="255,255,255" appId="sys_about" appLabel="SYSTEM ABOUT" onOpenSubApp={onOpenSubApp} />
-          <SvgLineGraph data={dataPoints.ram} color="255, 255, 255" label="MEMORY USAGE %" height={100} suffix="%" />
+          <div style={{ flexShrink: 0 }}>
+            <SvgLineGraph data={dataPoints.ram} color="255, 255, 255" label="MEMORY USAGE %" height={100} suffix="%" />
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
             <MiniDetail label="HOSTNAME" value={sysInfo?.hostname || "N/A"} color="255,255,255" />
             <MiniDetail label="PRODUCT" value={sysInfo?.product_name || "N/A"} color="255,255,255" />
