@@ -727,6 +727,400 @@ fn get_memory_telemetry(state: tauri::State<SysState>) -> MemoryTelemetry {
     }
 }
 
+// ─── GPU Telemetry ────────────────────────────────────────────────────────────
+#[derive(Serialize, Clone)]
+pub struct GpuTelemetry {
+    name: String,
+    vendor: String,
+    driver: String,
+    vram_mb: u64,
+    vram_total_mb: u64,
+    usage_percent: f32,
+    temp_c: f32,
+    power_w: f32,
+    pci_slot: String,
+    opengl: String,
+    vulkan: String,
+    has_info: bool,
+}
+
+fn run_cmd(prog: &str, args: &[&str]) -> String {
+    Command::new(prog).args(args).output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn get_gpu_telemetry() -> GpuTelemetry {
+    let mut name = "N/A".to_string();
+    let mut vendor = "N/A".to_string();
+    let mut driver = "N/A".to_string();
+    let mut vram_mb: u64 = 0;
+    let mut vram_total_mb: u64 = 0;
+    let mut usage_percent: f32 = 0.0;
+    let mut temp_c: f32 = 0.0;
+    let mut power_w: f32 = 0.0;
+    let mut pci_slot = "N/A".to_string();
+    let mut opengl = "N/A".to_string();
+    let mut vulkan = "N/A".to_string();
+    let mut has_info = false;
+
+    // lspci: get GPU name and PCI slot
+    let lspci = run_cmd("lspci", &[]);
+    for line in lspci.lines() {
+        let l = line.to_lowercase();
+        if l.contains("vga") || l.contains("3d controller") || l.contains("display controller") {
+            has_info = true;
+            if let Some((slot, rest)) = line.split_once(' ') {
+                pci_slot = slot.trim().to_string();
+                // Extract name from "VGA compatible controller: Intel Corporation ..."
+                if let Some(colon_pos) = rest.find(':') {
+                    name = rest[colon_pos + 1..].trim().to_string();
+                } else {
+                    name = rest.trim().to_string();
+                }
+            }
+            // Detect vendor
+            if l.contains("nvidia") { vendor = "NVIDIA".to_string(); }
+            else if l.contains("amd") || l.contains("ati") { vendor = "AMD".to_string(); }
+            else if l.contains("intel") { vendor = "Intel".to_string(); }
+            else if l.contains("vmware") { vendor = "VMware".to_string(); }
+            else if l.contains("virtualbox") { vendor = "VirtualBox".to_string(); }
+        }
+    }
+
+    // Try NVIDIA SMI
+    let smi = run_cmd("nvidia-smi", &[
+        "--query-gpu=name,driver_version,memory.used,memory.total,utilization.gpu,temperature.gpu,power.draw",
+        "--format=csv,noheader,nounits"
+    ]);
+    if !smi.trim().is_empty() {
+        let parts: Vec<&str> = smi.trim().split(',').collect();
+        if parts.len() >= 7 {
+            name = parts[0].trim().to_string();
+            driver = parts[1].trim().to_string();
+            vram_mb = parts[2].trim().parse().unwrap_or(0);
+            vram_total_mb = parts[3].trim().parse().unwrap_or(0);
+            usage_percent = parts[4].trim().parse().unwrap_or(0.0);
+            temp_c = parts[5].trim().parse().unwrap_or(0.0);
+            power_w = parts[6].trim().parse().unwrap_or(0.0);
+            vendor = "NVIDIA".to_string();
+            has_info = true;
+        }
+    }
+
+    // Try /sys for Intel/AMD VRAM (DRM sysfs)
+    if vram_total_mb == 0 {
+        for entry in std::fs::read_dir("/sys/class/drm").unwrap_or_else(|_| std::fs::read_dir("/tmp").unwrap()) {
+            if let Ok(e) = entry {
+                let path = e.path();
+                let mem_path = path.join("device/mem_info_vram_total");
+                if let Some(val) = read_sysfs(mem_path.to_str().unwrap_or("")) {
+                    if let Ok(v) = val.parse::<u64>() { vram_total_mb = v / (1024*1024); }
+                }
+                let used_path = path.join("device/mem_info_vram_used");
+                if let Some(val) = read_sysfs(used_path.to_str().unwrap_or("")) {
+                    if let Ok(v) = val.parse::<u64>() { vram_mb = v / (1024*1024); }
+                }
+            }
+        }
+    }
+
+    // Driver version from /sys
+    if driver == "N/A" {
+        if let Some(d) = read_sysfs("/proc/driver/nvidia/version") {
+            driver = d.lines().next().unwrap_or("").to_string();
+        }
+    }
+
+    // OpenGL via glxinfo
+    let glx = run_cmd("glxinfo", &["-B"]);
+    for line in glx.lines() {
+        if line.trim_start().starts_with("OpenGL version string:") {
+            opengl = line.split(':').nth(1).unwrap_or("").trim().to_string();
+        }
+    }
+
+    // Vulkan via vulkaninfo
+    let vk = run_cmd("vulkaninfo", &["--summary"]);
+    for line in vk.lines() {
+        if line.contains("apiVersion") {
+            if let Some(v) = line.split('=').nth(1) {
+                vulkan = v.trim().to_string();
+            }
+        }
+    }
+
+    GpuTelemetry { name, vendor, driver, vram_mb, vram_total_mb,
+        usage_percent, temp_c, power_w, pci_slot, opengl, vulkan, has_info }
+}
+
+// ─── Network Telemetry ────────────────────────────────────────────────────────
+#[derive(Serialize, Clone)]
+pub struct NetworkTelemetry {
+    interface: String,
+    ipv4: String,
+    ipv6: String,
+    mac: String,
+    gateway: String,
+    dns: String,
+    link_speed_mbps: u64,
+    rx_bytes: u64,
+    tx_bytes: u64,
+    has_info: bool,
+}
+
+#[tauri::command]
+fn get_network_telemetry() -> NetworkTelemetry {
+    let mut interface = "N/A".to_string();
+    let mut ipv4 = "N/A".to_string();
+    let mut ipv6 = "N/A".to_string();
+    let mut mac = "N/A".to_string();
+    let mut gateway = "N/A".to_string();
+    let mut dns = "N/A".to_string();
+    let mut link_speed_mbps: u64 = 0;
+    let mut rx_bytes: u64 = 0;
+    let mut tx_bytes: u64 = 0;
+
+    // Find primary interface (not lo)
+    if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+        for entry in entries.flatten() {
+            let iface = entry.file_name().to_string_lossy().to_string();
+            if iface == "lo" { continue; }
+            // Check if it has an IP (operstate = up or has IP)
+            let operstate = read_sysfs(&format!("/sys/class/net/{}/operstate", iface))
+                .unwrap_or_default();
+            if operstate.trim() == "up" || interface == "N/A" {
+                interface = iface.clone();
+            }
+        }
+    }
+
+    if interface != "N/A" {
+        // MAC address
+        mac = read_sysfs(&format!("/sys/class/net/{}/address", interface))
+            .unwrap_or("N/A".to_string());
+
+        // Link speed
+        link_speed_mbps = read_sysfs(&format!("/sys/class/net/{}/speed", interface))
+            .and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+
+        // RX/TX bytes
+        rx_bytes = read_sysfs(&format!("/sys/class/net/{}/statistics/rx_bytes", interface))
+            .and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+        tx_bytes = read_sysfs(&format!("/sys/class/net/{}/statistics/tx_bytes", interface))
+            .and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+
+        // IPv4 and IPv6 via ip command
+        let ip_out = run_cmd("ip", &["addr", "show", &interface]);
+        for line in ip_out.lines() {
+            let l = line.trim();
+            if l.starts_with("inet ") && ipv4 == "N/A" {
+                ipv4 = l.split_whitespace().nth(1).unwrap_or("N/A").split('/').next().unwrap_or("N/A").to_string();
+            }
+            if l.starts_with("inet6 ") && !l.contains("fe80") && ipv6 == "N/A" {
+                ipv6 = l.split_whitespace().nth(1).unwrap_or("N/A").split('/').next().unwrap_or("N/A").to_string();
+            }
+            if l.starts_with("inet6 ") && ipv6 == "N/A" {
+                ipv6 = l.split_whitespace().nth(1).unwrap_or("N/A").split('/').next().unwrap_or("N/A").to_string();
+            }
+        }
+    }
+
+    // Default gateway
+    let route = run_cmd("ip", &["route", "show", "default"]);
+    for line in route.lines() {
+        if line.starts_with("default via") {
+            gateway = line.split_whitespace().nth(2).unwrap_or("N/A").to_string();
+        }
+    }
+
+    // DNS from /etc/resolv.conf
+    if let Some(resolv) = read_sysfs("/etc/resolv.conf") {
+        for line in resolv.lines() {
+            if line.starts_with("nameserver") {
+                dns = line.split_whitespace().nth(1).unwrap_or("N/A").to_string();
+                break;
+            }
+        }
+    }
+
+    let has_info = interface != "N/A";
+    NetworkTelemetry { interface, ipv4, ipv6, mac, gateway, dns,
+        link_speed_mbps, rx_bytes, tx_bytes, has_info }
+}
+
+// ─── Storage Telemetry ────────────────────────────────────────────────────────
+#[derive(Serialize, Clone)]
+pub struct DiskInfo {
+    device: String,
+    mount: String,
+    fs_type: String,
+    total_gb: f32,
+    used_gb: f32,
+    free_gb: f32,
+    use_percent: u32,
+}
+
+#[derive(Serialize, Clone)]
+pub struct StorageTelemetry {
+    disks: Vec<DiskInfo>,
+    primary_type: String,   // SSD / HDD / NVMe / Virtual
+    total_gb: f32,
+    used_gb: f32,
+    free_gb: f32,
+    has_info: bool,
+}
+
+#[tauri::command]
+fn get_storage_telemetry() -> StorageTelemetry {
+    let mut disks: Vec<DiskInfo> = Vec::new();
+    let df = run_cmd("df", &["-T", "-BGB", "--output=source,fstype,size,used,avail,pcent,target"]);
+    let skip_fs = ["tmpfs", "devtmpfs", "squashfs", "overlay", "udev", "cgroupfs", "efivarfs", "proc", "sysfs"];
+
+    for line in df.lines().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 7 { continue; }
+        let fs_type = parts[1];
+        if skip_fs.iter().any(|s| fs_type.starts_with(s)) { continue; }
+        let mount = parts[6];
+        if mount.starts_with("/sys") || mount.starts_with("/proc") || mount.starts_with("/dev") { continue; }
+
+        let parse_gb = |s: &str| s.trim_end_matches('G').trim_end_matches('B').parse::<f32>().unwrap_or(0.0);
+        let total_gb = parse_gb(parts[2]);
+        let used_gb = parse_gb(parts[3]);
+        let free_gb = parse_gb(parts[4]);
+        let use_pct = parts[5].trim_end_matches('%').parse::<u32>().unwrap_or(0);
+
+        disks.push(DiskInfo {
+            device: parts[0].to_string(),
+            mount: mount.to_string(),
+            fs_type: fs_type.to_string(),
+            total_gb, used_gb, free_gb,
+            use_percent: use_pct,
+        });
+    }
+
+    // Detect primary storage type
+    let primary_type = if std::path::Path::new("/sys/block/nvme0").exists() {
+        "NVMe SSD".to_string()
+    } else if std::path::Path::new("/sys/block/sda").exists() {
+        // Check rotational flag
+        let rot = read_sysfs("/sys/block/sda/queue/rotational").unwrap_or_default();
+        if rot.trim() == "1" { "HDD".to_string() } else { "SSD".to_string() }
+    } else {
+        "Virtual Disk".to_string()
+    };
+
+    let total_gb: f32 = disks.iter().map(|d| d.total_gb).sum();
+    let used_gb: f32 = disks.iter().map(|d| d.used_gb).sum();
+    let free_gb: f32 = disks.iter().map(|d| d.free_gb).sum();
+    let has_info = !disks.is_empty();
+
+    StorageTelemetry { disks, primary_type, total_gb, used_gb, free_gb, has_info }
+}
+
+// ─── System Info Telemetry ────────────────────────────────────────────────────
+#[derive(Serialize, Clone)]
+pub struct SystemInfo {
+    hostname: String,
+    os_name: String,
+    os_version: String,
+    kernel: String,
+    architecture: String,
+    uptime_secs: u64,
+    process_count: u32,
+    motherboard: String,
+    bios_vendor: String,
+    bios_version: String,
+    chassis_type: String,
+    product_name: String,
+    secure_boot: String,
+    has_info: bool,
+}
+
+#[tauri::command]
+fn get_system_info(state: tauri::State<SysState>) -> SystemInfo {
+    let hostname = read_sysfs("/proc/sys/kernel/hostname")
+        .or_else(|| { run_cmd("hostname", &[]).trim().to_string().into() })
+        .unwrap_or("N/A".to_string());
+
+    let kernel = read_sysfs("/proc/version")
+        .map(|s| s.split_whitespace().take(3).collect::<Vec<_>>().join(" "))
+        .unwrap_or("N/A".to_string());
+
+    // OS from /etc/os-release
+    let mut os_name = "Linux".to_string();
+    let mut os_version = "N/A".to_string();
+    if let Some(osrel) = read_sysfs("/etc/os-release") {
+        for line in osrel.lines() {
+            if line.starts_with("PRETTY_NAME=") {
+                os_name = line.replace("PRETTY_NAME=", "").replace('"', "").trim().to_string();
+            }
+            if line.starts_with("VERSION_ID=") {
+                os_version = line.replace("VERSION_ID=", "").replace('"', "").trim().to_string();
+            }
+        }
+    }
+
+    let architecture = run_cmd("uname", &["-m"]).trim().to_string();
+
+    let mut sys = state.sys.lock().unwrap();
+    sys.refresh_all();
+    let uptime_secs = System::uptime();
+    let process_count = sys.processes().len() as u32;
+    drop(sys);
+
+    // Motherboard / BIOS from DMI sysfs (no root needed)
+    let motherboard = {
+        let board_vendor = read_sysfs("/sys/devices/virtual/dmi/id/board_vendor").unwrap_or_default();
+        let board_name = read_sysfs("/sys/devices/virtual/dmi/id/board_name").unwrap_or_default();
+        let combined = format!("{} {}", board_vendor.trim(), board_name.trim());
+        if combined.trim().is_empty() { "N/A".to_string() } else { combined.trim().to_string() }
+    };
+
+    let bios_vendor = read_sysfs("/sys/devices/virtual/dmi/id/bios_vendor")
+        .unwrap_or("N/A".to_string()).trim().to_string();
+
+    let bios_version = read_sysfs("/sys/devices/virtual/dmi/id/bios_version")
+        .unwrap_or("N/A".to_string()).trim().to_string();
+
+    let chassis_type = read_sysfs("/sys/devices/virtual/dmi/id/chassis_type")
+        .map(|s| match s.trim() {
+            "3" => "Desktop",
+            "8" | "9" | "10" => "Laptop",
+            "17" | "23" => "Server",
+            _ => "Other",
+        }.to_string())
+        .unwrap_or("N/A".to_string());
+
+    let product_name = {
+        let vendor = read_sysfs("/sys/devices/virtual/dmi/id/sys_vendor").unwrap_or_default();
+        let product = read_sysfs("/sys/devices/virtual/dmi/id/product_name").unwrap_or_default();
+        let combined = format!("{} {}", vendor.trim(), product.trim());
+        if combined.trim().is_empty() { "N/A".to_string() } else { combined.trim().to_string() }
+    };
+
+    // Secure boot check via efivarfs
+    let secure_boot = if std::path::Path::new("/sys/firmware/efi").exists() {
+        let sb = read_sysfs("/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c")
+            .map(|_| "Enabled".to_string())
+            .unwrap_or("Disabled".to_string());
+        sb
+    } else {
+        "Legacy BIOS".to_string()
+    };
+
+    let has_info = hostname != "N/A" || motherboard != "N/A";
+
+    SystemInfo {
+        hostname, os_name, os_version, kernel, architecture,
+        uptime_secs, process_count, motherboard, bios_vendor, bios_version,
+        chassis_type, product_name, secure_boot, has_info,
+    }
+}
+
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -742,6 +1136,10 @@ pub fn run() {
             get_advanced_cpu_info,
             get_cpu_telemetry,
             get_memory_telemetry,
+            get_gpu_telemetry,
+            get_network_telemetry,
+            get_storage_telemetry,
+            get_system_info,
             launch_external_app,
             execute_system_command,
         ])

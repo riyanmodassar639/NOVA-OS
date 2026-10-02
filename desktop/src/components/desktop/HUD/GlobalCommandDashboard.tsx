@@ -81,9 +81,13 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
     temp: "N/A"
   });
   const [memTelemetry, setMemTelemetry] = useState<any>(null);
+  const [gpuTelemetry, setGpuTelemetry] = useState<any>(null);
+  const [netTelemetry, setNetTelemetry] = useState<any>(null);
+  const [storageTelemetry, setStorageTelemetry] = useState<any>(null);
+  const [sysInfo, setSysInfo] = useState<any>(null);
 
   const [cpuInfo, setCpuInfo] = useState<{ [key: string]: string }>({});
-  const [uptime, setUptime] = useState(25300);
+  const [uptime, setUptime] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -106,6 +110,17 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
     };
     fetchAdvancedStats();
 
+    // Fetch slow-changing telemetry once on mount (GPU, Net, Storage, SysInfo)
+    const fetchSlowTelemetry = async () => {
+      try { const g: any = await invoke('get_gpu_telemetry');    if (isMounted) setGpuTelemetry(g); } catch (_) {}
+      try { const n: any = await invoke('get_network_telemetry'); if (isMounted) setNetTelemetry(n); } catch (_) {}
+      try { const s: any = await invoke('get_storage_telemetry'); if (isMounted) setStorageTelemetry(s); } catch (_) {}
+      try { const i: any = await invoke('get_system_info');       if (isMounted) setSysInfo(i); } catch (_) {}
+    };
+    fetchSlowTelemetry();
+    // Refresh every 10 seconds (slow-changing data)
+    const slowInterval = setInterval(fetchSlowTelemetry, 10000);
+
     const interval = setInterval(async () => {
       try {
         const stats: any = await invoke('get_system_stats');
@@ -115,43 +130,29 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         const memTotalGB = stats.memory_total / (1024 * 1024 * 1024);
         const memPercent = memTotalGB > 0 ? (memUsedGB / memTotalGB) * 100 : 0;
 
-        setLiveStats({
-          memUsedGB,
-          memTotalGB,
-          temp: stats.temperature
-        });
+        setLiveStats({ memUsedGB, memTotalGB, temp: stats.temperature });
+
+        // Fetch fast-updating memory telemetry
+        try { const mem: any = await invoke('get_memory_telemetry'); if (isMounted) setMemTelemetry(mem); } catch (_) {}
 
         setDataPoints(prev => ({
           cpu: [...prev.cpu.slice(1), stats.cpu_usage || 0],
           ram: [...prev.ram.slice(1), memPercent || 0],
-          netUp: [...prev.netUp.slice(1), Math.floor(Math.random() * 90) + 5],
-          netDown: [...prev.netDown.slice(1), Math.floor(Math.random() * 90) + 5],
-          gpu: [...prev.gpu.slice(1), Math.floor(Math.random() * 70) + 20],
-          disk: [...prev.disk.slice(1), Math.floor(Math.random() * 40)],
+          // Network: use real rx_bytes delta as proxy for activity
+          netUp: [...prev.netUp.slice(1), netTelemetry ? Math.min(100, (netTelemetry.tx_bytes / 1e9) % 100) : 0],
+          netDown: [...prev.netDown.slice(1), netTelemetry ? Math.min(100, (netTelemetry.rx_bytes / 1e9) % 100) : 0],
+          gpu: [...prev.gpu.slice(1), gpuTelemetry ? gpuTelemetry.usage_percent : 0],
+          disk: [...prev.disk.slice(1), storageTelemetry ? Math.round((storageTelemetry.used_gb / Math.max(storageTelemetry.total_gb, 1)) * 100) : 0],
         }));
-
-        // Fetch detailed memory telemetry every cycle
-        try {
-          const mem: any = await invoke('get_memory_telemetry');
-          if (isMounted) setMemTelemetry(mem);
-        } catch (_) {}
-
       } catch (err) {
         if (!isMounted) return;
-        setDataPoints(prev => ({
-          cpu: [...prev.cpu.slice(1), Math.floor(Math.random() * 80) + 10],
-          ram: [...prev.ram.slice(1), Math.floor(Math.random() * 20) + 40],
-          netUp: [...prev.netUp.slice(1), Math.floor(Math.random() * 90) + 5],
-          netDown: [...prev.netDown.slice(1), Math.floor(Math.random() * 90) + 5],
-          gpu: [...prev.gpu.slice(1), Math.floor(Math.random() * 70) + 20],
-          disk: [...prev.disk.slice(1), Math.floor(Math.random() * 40)],
-        }));
       }
       if (isMounted) setUptime(prev => prev + 1);
     }, 1000);
     return () => {
       isMounted = false;
       clearInterval(interval);
+      clearInterval(slowInterval);
     };
   }, []);
 
@@ -243,113 +244,78 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,136,0,0.02)", padding: "15px", border: "1px solid rgba(255,136,0,0.1)", borderRadius: "4px", overflow: "hidden" }}>
           <SectionHeader icon={Monitor} title="GRAPHICS ENGINE" color="255,136,0" appId="sys_graphics" appLabel="GPU DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <div style={{ flexShrink: 0 }}>
-            <SvgLineGraph data={dataPoints.gpu} color="255, 136, 0" label="GPU COMPUTE" height={100} />
+            <SvgLineGraph data={dataPoints.gpu} color="255, 136, 0" label={gpuTelemetry ? `GPU USAGE — ${gpuTelemetry.usage_percent.toFixed(1)}%` : "GPU COMPUTE"} height={100} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
-            <MiniDetail label="MODEL" value="Holo-GPU 9k" color="255,136,0" />
-            <MiniDetail label="VRAM" value="32 GB" color="255,136,0" />
-            <MiniDetail label="MEMORY TYPE" value="HBM3e" color="255,136,0" />
-            <MiniDetail label="CLOCK (CORE)" value="3.2 GHz" color="255,136,0" />
-            <MiniDetail label="CLOCK (MEM)" value="24.0 Gbps" color="255,136,0" />
-            <MiniDetail label="TEMP" value={`${Math.floor(dataPoints.gpu[39]*0.4 + 25)}°C`} color="255,136,0" />
-            <MiniDetail label="SHADERS" value="16,384" color="255,136,0" />
-            <MiniDetail label="COMPUTE UNITS" value="128 CU" color="255,136,0" />
-            <MiniDetail label="RT CORES" value="512" color="255,136,0" />
-            <MiniDetail label="TENSOR CORES" value="2048" color="255,136,0" />
-            <MiniDetail label="DIRECTX" value="DX 13.5" color="255,136,0" />
-            <MiniDetail label="SHARED MEM" value="16 GB" color="255,136,0" />
-            <MiniDetail label="BUS WIDTH" value="4096-Bit" color="255,136,0" />
-            <MiniDetail label="BANDWIDTH" value="3,072 GB/s" color="255,136,0" />
-            <MiniDetail label="PIXEL FILL" value="1,024 GP/s" color="255,136,0" />
-            <MiniDetail label="TEXTURE FILL" value="2,048 GT/s" color="255,136,0" />
-            <MiniDetail label="PCIE BUS" value="Gen6 x16" color="255,136,0" />
-            <MiniDetail label="DRIVER VER" value="560.12 Q" color="255,136,0" />
-            <MiniDetail label="BIOS VER" value="95.00.1A" color="255,136,0" />
-            <MiniDetail label="ROPs" value="512" color="255,136,0" />
-            <MiniDetail label="TMUs" value="1024" color="255,136,0" />
-            <MiniDetail label="L2 CACHE" value="128 MB" color="255,136,0" />
-            <MiniDetail label="INF. CACHE" value="256 MB" color="255,136,0" />
-            <MiniDetail label="V-CORE" value="1.05 V" color="255,136,0" />
-            <MiniDetail label="FAN SPEED" value="1500 RPM" color="255,136,0" />
-            <MiniDetail label="HOTSPOT" value="42°C" color="255,136,0" />
-            <MiniDetail label="TGP" value="450 W" color="255,136,0" />
-            <MiniDetail label="DIE SIZE" value="600 mm²" color="255,136,0" />
-            <MiniDetail label="TRANSISTORS" value="80 Billion" color="255,136,0" />
-            <MiniDetail label="ENCODER" value="NVENC v10" color="255,136,0" />
-            <MiniDetail label="DECODER" value="AV1 / HEVC" color="255,136,0" />
-            <MiniDetail label="NVLINK" value="Inactive" color="255,136,0" />
+            <MiniDetail label="MODEL" value={gpuTelemetry?.name || "N/A"} color="255,136,0" />
+            <MiniDetail label="VENDOR" value={gpuTelemetry?.vendor || "N/A"} color="255,136,0" />
+            <MiniDetail label="PCI SLOT" value={gpuTelemetry?.pci_slot || "N/A"} color="255,136,0" />
+            <MiniDetail label="DRIVER" value={gpuTelemetry?.driver || "N/A"} color="255,136,0" />
+            <MiniDetail label="VRAM USED" value={gpuTelemetry?.vram_mb > 0 ? `${gpuTelemetry.vram_mb} MB` : "N/A"} color="255,136,0" />
+            <MiniDetail label="VRAM TOTAL" value={gpuTelemetry?.vram_total_mb > 0 ? `${gpuTelemetry.vram_total_mb} MB` : "N/A"} color="255,136,0" />
+            <MiniDetail label="USAGE" value={gpuTelemetry ? `${gpuTelemetry.usage_percent.toFixed(1)}%` : "N/A"} color="255,136,0" />
+            <MiniDetail label="TEMP" value={gpuTelemetry?.temp_c > 0 ? `${gpuTelemetry.temp_c.toFixed(0)}°C` : "N/A"} color="255,136,0" />
+            <MiniDetail label="POWER" value={gpuTelemetry?.power_w > 0 ? `${gpuTelemetry.power_w.toFixed(0)} W` : "N/A"} color="255,136,0" />
+            <MiniDetail label="OpenGL" value={gpuTelemetry?.opengl || "N/A"} color="255,136,0" />
+            <MiniDetail label="Vulkan" value={gpuTelemetry?.vulkan || "N/A"} color="255,136,0" />
           </div>
         </div>
 
         {/* NETWORK & STORAGE COLUMN */}
         <div style={{ display: "flex", flexDirection: "column", gap: "15px", overflow: "hidden" }}>
           
+          {/* NETWORK */}
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(150,100,255,0.02)", padding: "15px", border: "1px solid rgba(150,100,255,0.1)", borderRadius: "4px", flex: 1, overflow: "hidden" }}>
             <SectionHeader icon={Radio} title="NETWORK UPLINK" color="150,100,255" appId="sys_network" appLabel="NETWORK DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
             <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
-              <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label="TX (Gbps)" height={40} suffix=" G" />
-              <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label="RX (Gbps)" height={40} suffix=" G" />
+              <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label={`TX — ${netTelemetry ? (netTelemetry.tx_bytes / 1e9).toFixed(2) + " GB total" : "N/A"}`} height={40} suffix="%" />
+              <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label={`RX — ${netTelemetry ? (netTelemetry.rx_bytes / 1e9).toFixed(2) + " GB total" : "N/A"}`} height={40} suffix="%" />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="IPv4" value="192.168.1.100" color="150,100,255" />
-               <MiniDetail label="IPv6" value="fe80::1a2b" color="150,100,255" />
-               <MiniDetail label="PING" value="0.1 ms" color="150,100,255" />
-               <MiniDetail label="MAC" value="00:1A:2B:3C:4D" color="150,100,255" />
-               <MiniDetail label="DNS" value="1.1.1.1" color="150,100,255" />
-               <MiniDetail label="LOSS" value="0%" color="150,100,255" />
-               <MiniDetail label="LINK" value="100 Gbps" color="150,100,255" />
-               <MiniDetail label="PROTOCOL" value="802.11be" color="150,100,255" />
-               <MiniDetail label="GATEWAY" value="192.168.1.1" color="150,100,255" />
-               <MiniDetail label="DHCP LEASE" value="23h 59m" color="150,100,255" />
-               <MiniDetail label="SIGNAL" value="-30 dBm" color="150,100,255" />
-               <MiniDetail label="CHANNEL" value="160 MHz" color="150,100,255" />
+               <MiniDetail label="INTERFACE" value={netTelemetry?.interface || "N/A"} color="150,100,255" />
+               <MiniDetail label="IPv4" value={netTelemetry?.ipv4 || "N/A"} color="150,100,255" />
+               <MiniDetail label="IPv6" value={netTelemetry?.ipv6 || "N/A"} color="150,100,255" />
+               <MiniDetail label="MAC" value={netTelemetry?.mac || "N/A"} color="150,100,255" />
+               <MiniDetail label="GATEWAY" value={netTelemetry?.gateway || "N/A"} color="150,100,255" />
+               <MiniDetail label="DNS" value={netTelemetry?.dns || "N/A"} color="150,100,255" />
+               <MiniDetail label="LINK SPEED" value={netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "N/A"} color="150,100,255" />
+               <MiniDetail label="TX TOTAL" value={netTelemetry?.tx_bytes > 0 ? `${(netTelemetry.tx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
+               <MiniDetail label="RX TOTAL" value={netTelemetry?.rx_bytes > 0 ? `${(netTelemetry.rx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
             </div>
           </div>
 
+          {/* STORAGE */}
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(0,255,136,0.02)", padding: "15px", border: "1px solid rgba(0,255,136,0.1)", borderRadius: "4px", flex: 1, overflow: "hidden" }}>
             <SectionHeader icon={HardDrive} title="STORAGE ARRAYS" color="0,255,136" appId="sys_storage" appLabel="STORAGE DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
             <div style={{ flexShrink: 0 }}>
-              <SvgLineGraph data={dataPoints.disk} color="0, 255, 136" label="I/O ACTIVITY" height={50} />
+              <SvgLineGraph data={dataPoints.disk} color="0, 255, 136" label={`DISK USAGE — ${storageTelemetry ? storageTelemetry.used_gb.toFixed(1) + " / " + storageTelemetry.total_gb.toFixed(1) + " GB" : "..."}`} height={50} suffix="%" />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="CAPACITY" value="8.0 TB" color="0,255,136" />
-               <MiniDetail label="SPEED" value="12.5 GB/s" color="0,255,136" />
-               <MiniDetail label="TYPE" value="Crystal NVMe" color="0,255,136" />
-               <MiniDetail label="FS" value="QFS v3" color="0,255,136" />
-               <MiniDetail label="SECTORS" value="15,625K" color="0,255,136" />
-               <MiniDetail label="HEALTH" value="100%" color="0,255,136" />
-               <MiniDetail label="CONTROLLER" value="Phison-Q" color="0,255,136" />
-               <MiniDetail label="NAND TYPE" value="SLC 3D" color="0,255,136" />
-               <MiniDetail label="SMART STAT" value="PASS" color="0,255,136" />
-               <MiniDetail label="TEMP" value="40°C" color="0,255,136" />
-               <MiniDetail label="PWR CYCLES" value="128" color="0,255,136" />
-               <MiniDetail label="WR AMPLIFY" value="1.0x" color="0,255,136" />
+               <MiniDetail label="TOTAL" value={storageTelemetry ? `${storageTelemetry.total_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
+               <MiniDetail label="USED" value={storageTelemetry ? `${storageTelemetry.used_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
+               <MiniDetail label="FREE" value={storageTelemetry ? `${storageTelemetry.free_gb.toFixed(1)} GB` : "N/A"} color="0,255,136" />
+               <MiniDetail label="TYPE" value={storageTelemetry?.primary_type || "N/A"} color="0,255,136" />
+               {storageTelemetry?.disks?.slice(0, 4).map((d: any, i: number) => (
+                 <MiniDetail key={i} label={d.mount} value={`${d.use_percent}% — ${d.fs_type}`} color="0,255,136" />
+               ))}
             </div>
           </div>
 
         </div>
 
-        {/* DISPLAY COLUMN */}
+        {/* DISPLAY COLUMN — partial real data from GPU */}
         <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(100,200,255,0.02)", padding: "15px", border: "1px solid rgba(100,200,255,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Monitor} title="DISPLAY SUBSYSTEM" color="100,200,255" appId="sys_display" appLabel="DISPLAY DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <SvgLineGraph data={dataPoints.cpu.map(x => 100 - (x/5))} color="100, 200, 255" label="REFRESH STABILITY" height={100} suffix="%" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
-            <MiniDetail label="PRIMARY" value="Quantum OLED" color="100,200,255" />
-            <MiniDetail label="RESOLUTION" value="7680 x 4320" color="100,200,255" />
-            <MiniDetail label="REFRESH" value="240.00 Hz" color="100,200,255" />
-            <MiniDetail label="DEPTH" value="12-bit RGB" color="100,200,255" />
-            <MiniDetail label="COLOR SPACE" value="DCI-P3 110%" color="100,200,255" />
-            <MiniDetail label="HDR" value="HDR10+" color="100,200,255" />
-            <MiniDetail label="BRIGHTNESS" value="4000 nits" color="100,200,255" />
-            <MiniDetail label="SYNC" value="G-Sync Ult." color="100,200,255" />
-            <MiniDetail label="RESPONSE" value="0.01 ms" color="100,200,255" />
-            <MiniDetail label="PIXEL PITCH" value="0.05 mm" color="100,200,255" />
-            <MiniDetail label="DELTA E" value="< 1.0" color="100,200,255" />
-            <MiniDetail label="DIMMING" value="Per-Pixel" color="100,200,255" />
-            <MiniDetail label="CONTRAST" value="Infinite:1" color="100,200,255" />
-            <MiniDetail label="PANEL TYPE" value="Micro-LED" color="100,200,255" />
-            <MiniDetail label="INTERFACE" value="DP 2.1" color="100,200,255" />
-            <MiniDetail label="HDCP" value="Version 2.3" color="100,200,255" />
+            <MiniDetail label="GPU" value={gpuTelemetry?.name || "N/A"} color="100,200,255" />
+            <MiniDetail label="OpenGL" value={gpuTelemetry?.opengl || "N/A"} color="100,200,255" />
+            <MiniDetail label="Vulkan" value={gpuTelemetry?.vulkan || "N/A"} color="100,200,255" />
+            <MiniDetail label="DRIVER" value={gpuTelemetry?.driver || "N/A"} color="100,200,255" />
+            <MiniDetail label="GPU TEMP" value={gpuTelemetry?.temp_c > 0 ? `${gpuTelemetry.temp_c.toFixed(0)}°C` : "N/A"} color="100,200,255" />
+            <MiniDetail label="RESOLUTION" value="N/A" color="100,200,255" />
+            <MiniDetail label="REFRESH" value="N/A" color="100,200,255" />
+            <MiniDetail label="DEPTH" value="N/A" color="100,200,255" />
           </div>
         </div>
 
@@ -358,30 +324,22 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
           
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,200,100,0.02)", padding: "15px", border: "1px solid rgba(255,200,100,0.1)", borderRadius: "4px", flex: 1 }}>
             <SectionHeader icon={Activity} title="AUDIO INTERFACE" color="255,200,100" appId="sys_sound" appLabel="AUDIO DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
-            <SvgLineGraph data={dataPoints.ram.map(x => x/2 + 20)} color="255, 200, 100" label="OUTPUT DB" height={40} suffix=" dB" />
+            <SvgLineGraph data={dataPoints.ram.map(x => x/2 + 20)} color="255, 200, 100" label="OUTPUT LEVEL" height={40} suffix=" dB" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="CHIP" value="Spatial DAC" color="255,200,100" />
-               <MiniDetail label="FORMAT" value="32-bit 384kHz" color="255,200,100" />
-               <MiniDetail label="CHANNELS" value="7.1.4 Atmos" color="255,200,100" />
-               <MiniDetail label="IMPEDANCE" value="600 Ohms" color="255,200,100" />
-               <MiniDetail label="SNR" value="130 dB" color="255,200,100" />
-               <MiniDetail label="THD+N" value="0.0001%" color="255,200,100" />
-               <MiniDetail label="DSP" value="Active" color="255,200,100" />
-               <MiniDetail label="CROSSTALK" value="-120 dB" color="255,200,100" />
+               <MiniDetail label="CHIP" value="N/A" color="255,200,100" />
+               <MiniDetail label="FORMAT" value="N/A" color="255,200,100" />
+               <MiniDetail label="CHANNELS" value="N/A" color="255,200,100" />
+               <MiniDetail label="SNR" value="N/A" color="255,200,100" />
             </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,100,150,0.02)", padding: "15px", border: "1px solid rgba(255,100,150,0.1)", borderRadius: "4px", flex: 1 }}>
             <SectionHeader icon={Zap} title="INPUT DEVICES" color="255,100,150" appId="sys_input" appLabel="INPUT DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px" }}>
-               <MiniDetail label="PRIMARY" value="Neural Sync" color="255,100,150" />
-               <MiniDetail label="POLLING" value="8000 Hz" color="255,100,150" />
-               <MiniDetail label="LATENCY" value="0.05 ms" color="255,100,150" />
-               <MiniDetail label="TRACKING" value="6DOF Sub-mm" color="255,100,150" />
-               <MiniDetail label="HAPTICS" value="HD Linear" color="255,100,150" />
-               <MiniDetail label="ACTUATION" value="Optical" color="255,100,150" />
-               <MiniDetail label="PROTOCOL" value="Lightspeed" color="255,100,150" />
-               <MiniDetail label="DEBOUNCE" value="0 ms" color="255,100,150" />
+               <MiniDetail label="KEYBOARD" value="N/A" color="255,100,150" />
+               <MiniDetail label="MOUSE" value="N/A" color="255,100,150" />
+               <MiniDetail label="USB DEVICES" value="N/A" color="255,100,150" />
+               <MiniDetail label="PROTOCOL" value="N/A" color="255,100,150" />
             </div>
           </div>
 
@@ -390,48 +348,39 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         {/* SECURITY & KERNEL COLUMN */}
         <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,50,50,0.02)", padding: "15px", border: "1px solid rgba(255,50,50,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Shield} title="SECURITY & KERNEL" color="255,50,50" appId="sys_about" appLabel="SYSTEM ABOUT" onOpenSubApp={onOpenSubApp} />
-          <SvgLineGraph data={dataPoints.netDown.map(x => 100 - x/10)} color="255, 50, 50" label="THREAT MITIGATION" height={100} suffix="%" />
+          <SvgLineGraph data={dataPoints.cpu.map(x => 100 - x/5)} color="255, 50, 50" label="SYSTEM LOAD" height={100} suffix="%" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
-            <MiniDetail label="KERNEL" value="Quantum v0.1.0" color="255,50,50" />
-            <MiniDetail label="FIREWALL" value="Aegis-X Active" color="255,50,50" />
-            <MiniDetail label="ENCRYPTION" value="AES-4096-GCM" color="255,50,50" />
-            <MiniDetail label="BIOS" value="NOVA Q90" color="255,50,50" />
-            <MiniDetail label="DEFENDER" value="Real-time ON" color="255,50,50" />
-            <MiniDetail label="TPM" value="Module 3.0" color="255,50,50" />
-            <MiniDetail label="INTEGRITY" value="100% Verified" color="255,50,50" />
-            <MiniDetail label="SANDBOX" value="Isolated" color="255,50,50" />
-            <MiniDetail label="SECURE BOOT" value="Enforced" color="255,50,50" />
-            <MiniDetail label="DEP" value="Hardware" color="255,50,50" />
-            <MiniDetail label="ASLR" value="High Entropy" color="255,50,50" />
-            <MiniDetail label="ANTI-CHEAT" value="Ring-0" color="255,50,50" />
-            <MiniDetail label="0-DAY PROT" value="AI Heuristics" color="255,50,50" />
-            <MiniDetail label="AUTH" value="Biometric" color="255,50,50" />
-            <MiniDetail label="DATA VAULT" value="Encrypted" color="255,50,50" />
-            <MiniDetail label="VPN TUNNEL" value="Active Proxy" color="255,50,50" />
+            <MiniDetail label="KERNEL" value={sysInfo?.kernel?.split(' ').slice(0,2).join(' ') || "N/A"} color="255,50,50" />
+            <MiniDetail label="OS" value={sysInfo?.os_name || "N/A"} color="255,50,50" />
+            <MiniDetail label="VERSION" value={sysInfo?.os_version || "N/A"} color="255,50,50" />
+            <MiniDetail label="ARCH" value={sysInfo?.architecture || "N/A"} color="255,50,50" />
+            <MiniDetail label="HOSTNAME" value={sysInfo?.hostname || "N/A"} color="255,50,50" />
+            <MiniDetail label="PROCESSES" value={sysInfo ? `${sysInfo.process_count}` : "N/A"} color="255,50,50" />
+            <MiniDetail label="SECURE BOOT" value={sysInfo?.secure_boot || "N/A"} color="255,50,50" />
+            <MiniDetail label="BIOS" value={sysInfo?.bios_version || "N/A"} color="255,50,50" />
+            <MiniDetail label="BIOS VENDOR" value={sysInfo?.bios_vendor || "N/A"} color="255,50,50" />
+            <MiniDetail label="CHASSIS" value={sysInfo?.chassis_type || "N/A"} color="255,50,50" />
+            <MiniDetail label="UPTIME" value={sysInfo ? `${Math.floor(sysInfo.uptime_secs / 3600)}h ${Math.floor((sysInfo.uptime_secs % 3600) / 60)}m` : "N/A"} color="255,50,50" />
           </div>
         </div>
 
         {/* DEVICE INFO COLUMN */}
         <div style={{ display: "flex", flexDirection: "column", gap: "15px", background: "rgba(255,255,255,0.02)", padding: "15px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px" }}>
-          <SectionHeader icon={Globe} title="DEVICE INFO & POWER" color="255,255,255" appId="sys_about" appLabel="SYSTEM ABOUT" onOpenSubApp={onOpenSubApp} />
-          <SvgLineGraph data={dataPoints.cpu.map(x => (x * 3) + 200)} color="255, 255, 255" label="POWER DRAW (W)" height={100} suffix=" W" />
+          <SectionHeader icon={Globe} title="DEVICE INFO" color="255,255,255" appId="sys_about" appLabel="SYSTEM ABOUT" onOpenSubApp={onOpenSubApp} />
+          <SvgLineGraph data={dataPoints.ram} color="255, 255, 255" label="MEMORY USAGE %" height={100} suffix="%" />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", overflowY: "auto", paddingRight: "5px" }}>
-            <MiniDetail label="DEVICE NAME" value="NOVA-X9" color="255,255,255" />
-            <MiniDetail label="SYSTEM TYPE" value="128-bit OS" color="255,255,255" />
-            <MiniDetail label="DEVICE ID" value="97FEFB8A..." color="255,255,255" />
-            <MiniDetail label="PRODUCT ID" value="00330-80000" color="255,255,255" />
-            <MiniDetail label="POWER MODE" value="Performance" color="255,255,255" />
-            <MiniDetail label="BATTERY" value="AC Connected" color="255,255,255" />
-            <MiniDetail label="MOTHERBOARD" value="Quantum Board" color="255,255,255" />
-            <MiniDetail label="COOLING" value="Liquid Cryo" color="255,255,255" />
-            <MiniDetail label="PUMP SPEED" value="3200 RPM" color="255,255,255" />
-            <MiniDetail label="FAN CURVE" value="Aggressive" color="255,255,255" />
-            <MiniDetail label="PSU" value="1600W Titanium" color="255,255,255" />
-            <MiniDetail label="V-CORE" value="1.45V" color="255,255,255" />
-            <MiniDetail label="AMBIENT" value="22°C" color="255,255,255" />
-            <MiniDetail label="CHASSIS" value="Monolith" color="255,255,255" />
-            <MiniDetail label="FORM FACTOR" value="E-ATX" color="255,255,255" />
-            <MiniDetail label="RGB SYNC" value="Aura Match" color="255,255,255" />
+            <MiniDetail label="HOSTNAME" value={sysInfo?.hostname || "N/A"} color="255,255,255" />
+            <MiniDetail label="PRODUCT" value={sysInfo?.product_name || "N/A"} color="255,255,255" />
+            <MiniDetail label="MOTHERBOARD" value={sysInfo?.motherboard || "N/A"} color="255,255,255" />
+            <MiniDetail label="BIOS VER" value={sysInfo?.bios_version || "N/A"} color="255,255,255" />
+            <MiniDetail label="BIOS VENDOR" value={sysInfo?.bios_vendor || "N/A"} color="255,255,255" />
+            <MiniDetail label="CHASSIS" value={sysInfo?.chassis_type || "N/A"} color="255,255,255" />
+            <MiniDetail label="OS" value={sysInfo?.os_name?.split(' ').slice(0,2).join(' ') || "N/A"} color="255,255,255" />
+            <MiniDetail label="KERNEL" value={sysInfo?.kernel?.split(' ').slice(2,3).join(' ') || "N/A"} color="255,255,255" />
+            <MiniDetail label="ARCH" value={sysInfo?.architecture || "N/A"} color="255,255,255" />
+            <MiniDetail label="PROCESSES" value={sysInfo ? `${sysInfo.process_count}` : "N/A"} color="255,255,255" />
+            <MiniDetail label="RAM USED" value={memTelemetry ? `${memTelemetry.used_gb.toFixed(1)} GB` : "N/A"} color="255,255,255" />
+            <MiniDetail label="RAM TOTAL" value={memTelemetry ? `${memTelemetry.total_gb.toFixed(1)} GB` : "N/A"} color="255,255,255" />
           </div>
         </div>
 
