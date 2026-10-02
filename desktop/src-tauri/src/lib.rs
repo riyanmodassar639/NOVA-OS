@@ -58,7 +58,11 @@ struct SysState {
     // Store last energy reading for delta calculation
     last_energy_uj: Mutex<u64>,
     last_energy_time: Mutex<std::time::Instant>,
+    // Cache slow hardware info
+    cached_dimm: Mutex<Option<(String, String, u32, u32, u32, String, String, Vec<SlotInfo>, String, bool, bool)>>,
+    cached_lscpu: Mutex<Option<HashMap<String, String>>>,
 }
+
 
 // ─── Helper: read a sysfs file ───────────────────────────────────────────────
 
@@ -228,8 +232,6 @@ fn glob_dirs(pattern: &str) -> Vec<String> {
 fn get_cpu_telemetry(state: tauri::State<SysState>) -> CpuTelemetry {
     let mut sys = state.sys.lock().unwrap();
     sys.refresh_cpu_all();
-    sys.refresh_memory();
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
     let cpus = sys.cpus();
     let global_usage = sys.global_cpu_usage();
@@ -241,10 +243,16 @@ fn get_cpu_telemetry(state: tauri::State<SysState>) -> CpuTelemetry {
     let model_name = cpus.first().map(|c| c.brand().to_string()).unwrap_or_default();
     let vendor = cpus.first().map(|c| c.vendor_id().to_string()).unwrap_or_default();
 
-    let process_count = sys.processes().len() as u32;
-    let thread_count = sys.processes().values()
-        .map(|p| p.tasks().map(|t| t.len()).unwrap_or(1) as u32)
-        .sum::<u32>().max(process_count);
+    // Fast process count via /proc
+    let mut process_count = 0;
+    if let Ok(entries) = std::fs::read_dir("/proc") {
+        for e in entries.flatten() {
+            if e.file_name().to_string_lossy().chars().all(char::is_numeric) {
+                process_count += 1;
+            }
+        }
+    }
+    let thread_count = process_count * 2; // rough estimate to avoid heavy iteration
 
     // Thermal
     drop(sys);
@@ -262,8 +270,12 @@ fn get_cpu_telemetry(state: tauri::State<SysState>) -> CpuTelemetry {
     // Voltage
     let (core_voltage_v, voltage_available) = get_core_voltage_v();
 
-    // lscpu enrichment (Linux only)
-    let lscpu = get_lscpu_map();
+    // lscpu enrichment (Linux only) - CACHED
+    let mut cache = state.cached_lscpu.lock().unwrap();
+    if cache.is_none() {
+        *cache = Some(get_lscpu_map());
+    }
+    let lscpu = cache.clone().unwrap();
     let architecture = lscpu.get("Architecture").cloned()
         .unwrap_or_else(|| std::env::consts::ARCH.to_string());
     let stepping = lscpu.get("Stepping").cloned().unwrap_or_else(|| "N/A".to_string());
@@ -689,9 +701,13 @@ fn get_memory_telemetry(state: tauri::State<SysState>) -> MemoryTelemetry {
     let slab_bytes      = read_meminfo_kb("Slab:");
     let committed_bytes = read_meminfo_kb("Committed_AS:");
 
-    // DIMM hardware info
+    // DIMM hardware info (cached)
+    let mut cache = state.cached_dimm.lock().unwrap();
+    if cache.is_none() {
+        *cache = Some(get_dimm_info());
+    }
     let (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial,
-         slot_details, channels, ecc_enabled, dimm_has_info) = get_dimm_info();
+         slot_details, channels, ecc_enabled, dimm_has_info) = cache.clone().unwrap();
 
     MemoryTelemetry {
         total_bytes: total,
@@ -1130,6 +1146,8 @@ pub fn run() {
             sys: Mutex::new(System::new_all()),
             last_energy_uj: Mutex::new(0u64),
             last_energy_time: Mutex::new(std::time::Instant::now()),
+            cached_dimm: Mutex::new(None),
+            cached_lscpu: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_system_stats,
