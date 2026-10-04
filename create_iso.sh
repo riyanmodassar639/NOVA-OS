@@ -61,6 +61,8 @@ lshw
 pciutils
 usbutils
 alsa-utils
+mesa-utils
+vulkan-tools
 EOF
 
 # Configure the OS to automatically log in and start our UI without a password!
