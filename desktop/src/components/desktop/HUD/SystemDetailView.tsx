@@ -124,8 +124,8 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             </linearGradient>
           </defs>
           <polygon points={`0,100 ${pts} 100,100`} fill={`url(#g${color.replace(/,/g,"")})`} />
-          <polyline points={pts} fill="none" stroke={`rgb(${color})`} strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ filter: `drop-shadow(0 0 4px rgb(${color}))` }} />
-          <circle cx="100" cy={100 - (cur / max) * 100} r="3" fill="white" style={{ filter: `drop-shadow(0 0 6px rgb(${color}))` }} />
+          <polyline points={pts} fill="none" stroke={`rgb(${color})`} strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ opacity: 1 }} />
+          <circle cx="100" cy={100 - (cur / max) * 100} r="3" fill="white" style={{ opacity: 1 }} />
         </svg>
       </div>
     );
@@ -209,7 +209,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         {/* HEADER */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Cpu size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Cpu size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.1rem", letterSpacing: "3px", fontWeight: "bold", color: `rgb(${c})`, animation: "glow 3s infinite", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "500px" }}>
                 {t?.model_name || "PROCESSOR DIAGNOSTICS"}
@@ -349,7 +349,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         {/* HEADER */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <MemoryStick size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <MemoryStick size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.1rem", letterSpacing: "3px", fontWeight: "bold", color: `rgb(${c})` }}>
                 MEMORY SUBSYSTEM
@@ -469,7 +469,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Monitor size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Monitor size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>GRAPHICS ENGINE</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>{g?.name?.toUpperCase() || "GPU PIPELINE ANALYSIS"}</div>
@@ -561,7 +561,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Radio size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Radio size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>NETWORK STACK</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>HYPER-BANDWIDTH UPLINK // SECURE TUNNEL ACTIVE</div>
@@ -627,7 +627,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <HardDrive size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <HardDrive size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>STORAGE ARRAYS</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>CRYSTAL NVME 8TB // QUANTUM FLASH STORAGE ANALYSIS</div>
@@ -706,7 +706,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Monitor size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Monitor size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>DISPLAY SUBSYSTEM</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>QUANTUM OLED ARRAY // PHOTON ACCURACY ANALYSIS</div>
@@ -768,7 +768,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Activity size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Activity size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>AUDIO INTERFACE</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>SPATIAL AUDIO CONTROLLER // STUDIO GRADE ANALYSIS</div>
@@ -833,7 +833,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Zap size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Zap size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>INPUT DEVICES</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>NEURAL SYNC INTERFACE // BIOFEEDBACK ANALYSIS</div>
@@ -890,7 +890,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Server size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Server size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>SYSTEM IDENTITY</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>NOVA WORKSTATION // FULL SYSTEM FIELD REPORT</div>
@@ -954,7 +954,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Wifi size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Wifi size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>WI-FI ARRAY DIAGNOSTICS</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>802.11be BEAMFORMING ANALYSIS</div>
@@ -1297,7 +1297,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <ShieldCheck size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <ShieldCheck size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>VPN SECURE TUNNEL</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>ZERO-TRUST PROXY NETWORK</div>
@@ -1464,7 +1464,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <RadioTower size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <RadioTower size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>AD-HOC RELAY DIAGNOSTICS</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>MOBILE HOTSPOT BROADCAST</div>
@@ -1572,7 +1572,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Plane size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Plane size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>RADIO SILENCE PROTOCOL</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>AIRPLANE MODE OVERRIDE</div>
@@ -1660,7 +1660,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Network size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Network size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>PROXY SERVER ROUTING</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>SYSTEM-WIDE TRAFFIC REDIRECTION</div>
@@ -1694,7 +1694,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Phone size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Phone size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>LEGACY UPLINK HANDSHAKE</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>DIAL-UP / ANALOG MODEM INTERFACE</div>
@@ -1728,7 +1728,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <style>{styles}</style>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Settings2 size={28} style={{ color: `rgb(${c})`, filter: `drop-shadow(0 0 8px rgb(${c}))` }} />
+            <Settings2 size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>ADVANCED ADAPTER METRICS</div>
               <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>SYSTEM INTERFACES & ROUTING TABLES</div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Cpu, MemoryStick, HardDrive, Monitor, Activity, Radio, Globe, Shield, Zap, ExternalLink } from "lucide-react";
 import { invoke } from '@tauri-apps/api/core';
 
@@ -24,8 +24,8 @@ const SvgLineGraph = ({ data, color, height = 60, label, suffix = "%" }: any) =>
       </div>
       <svg width="100%" height={height} viewBox="0 0 100 100" preserveAspectRatio="none" style={{ overflow: "visible", zIndex: 1, marginTop: "auto" }}>
         <polygon points={`0,100 ${points} 100,100`} fill={`rgba(${color}, 0.15)`} />
-        <polyline points={points} fill="none" stroke={`rgb(${color})`} strokeWidth="2" vectorEffect="non-scaling-stroke" style={{ filter: `drop-shadow(0 0 5px rgb(${color}))` }} />
-        <circle cx="100" cy={100 - (currentVal / max) * 100} r="3" fill="#fff" style={{ filter: `drop-shadow(0 0 8px rgb(${color}))` }} />
+        <polyline points={points} fill="none" stroke={`rgb(${color})`} strokeWidth="2" vectorEffect="non-scaling-stroke"  />
+        <circle cx="100" cy={100 - (currentVal / max) * 100} r="3" fill="#fff"  />
       </svg>
     </div>
   );
@@ -85,6 +85,9 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
   const [netTelemetry, setNetTelemetry] = useState<any>(null);
   const [storageTelemetry, setStorageTelemetry] = useState<any>(null);
   const [sysInfo, setSysInfo] = useState<any>(null);
+  const netRef = useRef<any>(null);
+  const gpuRef = useRef<any>(null);
+  const storageRef = useRef<any>(null);
   const [audioTelemetry, setAudioTelemetry] = useState<any>(null);
   const [inputTelemetry, setInputTelemetry] = useState<any>(null);
   const [displayTelemetry, setDisplayTelemetry] = useState<any>(null);
@@ -115,9 +118,9 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
 
     // Fetch slow-changing telemetry once on mount (GPU, Net, Storage, SysInfo)
     const fetchSlowTelemetry = async () => {
-      try { const g: any = await invoke('get_gpu_telemetry');    if (isMounted) setGpuTelemetry(g); } catch (_) {}
-      try { const n: any = await invoke('get_network_telemetry'); if (isMounted) setNetTelemetry(n); } catch (_) {}
-      try { const s: any = await invoke('get_storage_telemetry'); if (isMounted) setStorageTelemetry(s); } catch (_) {}
+      try { const g: any = await invoke('get_gpu_telemetry');    if (isMounted) { setGpuTelemetry(g); gpuRef.current = g; } } catch (_) {}
+      try { const n: any = await invoke('get_network_telemetry'); if (isMounted) { setNetTelemetry(n); netRef.current = n; } } catch (_) {}
+      try { const s: any = await invoke('get_storage_telemetry'); if (isMounted) { setStorageTelemetry(s); storageRef.current = s; } } catch (_) {}
       try { const i: any = await invoke('get_system_info');       if (isMounted) setSysInfo(i); } catch (_) {}
       try { const a: any = await invoke('get_audio_telemetry');   if (isMounted) setAudioTelemetry(a); } catch (_) {}
       try { const inp: any = await invoke('get_input_telemetry'); if (isMounted) setInputTelemetry(inp); } catch (_) {}
@@ -143,12 +146,12 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
 
         setDataPoints(prev => ({
           cpu: [...prev.cpu.slice(1), stats.cpu_usage || 0],
-          ram: [...prev.ram.slice(1), memPercent || 0],
+          ram: [...prev.ram.slice(1), memPercent ? parseFloat(memPercent.toFixed(1)) : 0],
           // Network: use real rx_bytes delta as proxy for activity
-          netUp: [...prev.netUp.slice(1), netTelemetry ? Math.min(100, (netTelemetry.tx_bytes / 1e9) % 100) : 0],
-          netDown: [...prev.netDown.slice(1), netTelemetry ? Math.min(100, (netTelemetry.rx_bytes / 1e9) % 100) : 0],
-          gpu: [...prev.gpu.slice(1), gpuTelemetry ? gpuTelemetry.usage_percent : 0],
-          disk: [...prev.disk.slice(1), storageTelemetry ? Math.round((storageTelemetry.used_gb / Math.max(storageTelemetry.total_gb, 1)) * 100) : 0],
+          netUp: [...prev.netUp.slice(1), netRef.current ? Math.min(100, (netRef.current.tx_bytes / 1e9) % 100) : 0],
+          netDown: [...prev.netDown.slice(1), netRef.current ? Math.min(100, (netRef.current.rx_bytes / 1e9) % 100) : 0],
+          gpu: [...prev.gpu.slice(1), gpuRef.current ? gpuRef.current.usage_percent : 0],
+          disk: [...prev.disk.slice(1), storageRef.current ? Math.round((storageRef.current.used_gb / Math.max(storageRef.current.total_gb, 1)) * 100) : 0],
         }));
       } catch (err) {
         if (!isMounted) return;

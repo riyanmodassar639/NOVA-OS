@@ -172,7 +172,7 @@ Dir::Bin::dpkg "/usr/local/bin/dpkg-wrapper";
 EOF
 
 # 3. The robust fallback wrappers for ALL coreutils commands
-for cmd in rm mkdir cp cat readlink uname chmod chown ln mv touch install chgrp rmdir sync md5sum basename dirname mktemp realpath date true false; do
+for cmd in env env rm mkdir cp cat readlink uname chmod chown ln mv touch install chgrp rmdir sync md5sum basename dirname mktemp realpath date true false; do
     sudo tee "chroot/usr/local/bin/$cmd" > /dev/null << WRAPPER
 #!/bin/sh
 for _dir in /usr/bin /bin /usr/lib/cargo/bin/coreutils; do
@@ -219,7 +219,7 @@ sudo chroot chroot dpkg-divert --add --rename --divert /usr/sbin/mkinitramfs.rea
 sudo tee chroot/usr/sbin/mkinitramfs > /dev/null << 'WRAPPER'
 #!/bin/sh
 # Fix merged-usr dpkg bug which deletes coreutils-from-uutils symlinks!
-for cmd in touch readlink mktemp cp mv rm mkdir cat uname chmod chown ln basename dirname realpath date true false sync; do
+for cmd in env touch readlink mktemp cp mv rm mkdir cat uname chmod chown ln basename dirname realpath date true false sync; do
     if [ ! -e "/usr/bin/$cmd" ] && [ -e "/usr/lib/cargo/bin/coreutils/$cmd" ]; then
         ln -sf "../lib/cargo/bin/coreutils/$cmd" "/usr/bin/$cmd"
     fi
