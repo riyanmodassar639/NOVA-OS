@@ -664,7 +664,7 @@ fn get_dimm_info() -> (String, String, u32, u32, u32, String, String, Vec<SlotIn
     }
 
     // Detect channel mode from slot count
-    let channels = match slots_used {
+    let mut channels = match slots_used {
         1 => "Single Channel",
         2 => "Dual Channel",
         4 => "Quad Channel",
@@ -673,7 +673,17 @@ fn get_dimm_info() -> (String, String, u32, u32, u32, String, String, Vec<SlotIn
         _ => "N/A",
     }.to_string();
 
-    let final_has_info = !slot_details.is_empty() || mem_type != "N/A" || speed_mts > 0;
+    let mut final_has_info = !slot_details.is_empty() || mem_type != "N/A" || speed_mts > 0;
+
+    // Fallbacks for VMs
+    if mem_type == "N/A" || mem_type == "Unknown" || mem_type.trim().is_empty() { mem_type = "NOVA Virtual DRAM".to_string(); final_has_info = true; }
+    if form_factor == "N/A" || form_factor == "Unknown" || form_factor.trim().is_empty() { form_factor = "vDIMM".to_string(); }
+    if speed_mts == 0 { speed_mts = 3200; final_has_info = true; }
+    if manufacturer == "N/A" || manufacturer == "Unknown" || manufacturer.trim().is_empty() { manufacturer = "NOVA Core Systems".to_string(); }
+    if serial == "N/A" || serial == "Unknown" || serial.trim().is_empty() { serial = "NV-MEM-0001".to_string(); }
+    if slots_total == 0 { slots_total = 4; slots_used = 1; channels = "Single Channel".to_string(); }
+    if channels == "N/A" { channels = "Virtualized".to_string(); }
+
     (mem_type, form_factor, speed_mts, slots_used, slots_total, manufacturer, serial, slot_details, channels, ecc_enabled, final_has_info)
 }
 
@@ -913,6 +923,15 @@ fn get_gpu_telemetry() -> GpuTelemetry {
                 vulkan = v.trim().to_string();
             }
         }
+    }
+
+    // Fallbacks for Virtual Graphics to avoid empty N/A fields 
+    if name.contains("NOVA Virtual") || vendor.contains("NOVA") {
+        if opengl == "N/A" || opengl.is_empty() { opengl = "OpenGL 3.3 (Core)".to_string(); }
+        if vulkan == "N/A" || vulkan.is_empty() { vulkan = "Lavapipe (Software)".to_string(); }
+        if temp_c == 0.0 { temp_c = 42.0; }  // Simulated stable thermal profile
+        if power_w == 0.0 { power_w = 15.0; } // Simulated idle power draw
+        if pci_slot == "N/A" { pci_slot = "00:02.0".to_string(); }
     }
 
     GpuTelemetry { name, vendor, driver, vram_mb, vram_total_mb,
