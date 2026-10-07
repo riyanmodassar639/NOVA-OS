@@ -46,6 +46,7 @@ echo "Configuring OS packages..."
 mkdir -p config/package-lists
 cat <<EOF > config/package-lists/nova.list.chroot
 xserver-xorg
+network-manager
 xserver-xorg-video-all
 xinit
 matchbox-window-manager

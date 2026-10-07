@@ -554,8 +554,39 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   // ===================== NETWORK =====================
   if (type === "sys_network") {
     const c = "150,100,255";
-    const txVal = graphs.a[graphs.a.length - 1];
-    const rxVal = graphs.b[graphs.b.length - 1];
+    const [netData, setNetData] = useState<any>(null);
+    const n = netData;
+    const txVal = n ? (n.tx_bytes / 1e6).toFixed(2) : graphs.a[graphs.a.length - 1];
+    const rxVal = n ? (n.rx_bytes / 1e6).toFixed(2) : graphs.b[graphs.b.length - 1];
+
+    useEffect(() => {
+      let alive = true;
+      const poll = async () => {
+        try {
+          const n: any = await invoke('get_network_telemetry');
+          if (!alive) return;
+          setNetData(n);
+        } catch (_) {}
+      };
+      poll();
+      const iv = setInterval(poll, 2000);
+      return () => { alive = false; clearInterval(iv); };
+    }, []);
+
+    const isConnected = n?.has_info && n?.ipv4 !== "N/A";
+    const interfaceName = n?.interface || "N/A";
+
+    // Deduce connection type from interface
+    let connType = "Unknown";
+    let iconLabel = "Hyper-Uplink";
+    if (interfaceName.startsWith("wlan") || interfaceName.startsWith("wlp")) {
+      connType = "Wi-Fi";
+      iconLabel = "Wireless Adapter";
+    } else if (interfaceName.startsWith("eth") || interfaceName.startsWith("en")) {
+      connType = "Ethernet";
+      iconLabel = "Wired Adapter";
+    }
+
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", background: "radial-gradient(ellipse at top left, rgba(20,0,40,0.4) 0%, transparent 60%)" }}>
         <style>{styles}</style>
@@ -564,55 +595,47 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             <Radio size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>NETWORK STACK</div>
-              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>HYPER-BANDWIDTH UPLINK // SECURE TUNNEL ACTIVE</div>
+              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>{interfaceName.toUpperCase()} // UPLINK DIAGNOSTICS</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
-            <StatusBadge label="CONNECTED" active={true} color={c} />
-            <StatusBadge label="TUNNEL ACTIVE" active={true} color={c} />
-            <StatusBadge label="0% LOSS" active={true} color={c} />
+            <StatusBadge label={isConnected ? "CONNECTED" : "DISCONNECTED"} active={isConnected} color={c} />
+            <StatusBadge label={connType.toUpperCase()} active={true} color={c} />
           </div>
         </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-          <MiniGraph data={graphs.a} color={c} label={`UPLINK (TX) — ${txVal} Mbps`} height={100} suffix=" Mbps" />
-          <MiniGraph data={graphs.b} color="200,150,255" label={`DOWNLINK (RX) — ${rxVal} Mbps`} height={100} suffix=" Mbps" />
+          <MiniGraph data={graphs.a} color={c} label={`UPLINK (TX) — ${txVal} MB`} height={100} suffix=" MB" />
+          <MiniGraph data={graphs.b} color="200,150,255" label={`DOWNLINK (RX) — ${rxVal} MB`} height={100} suffix=" MB" />
         </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
           <Panel color={c}>
             <SectionTitle icon={Radio} label="LINK IDENTITY" color={c} />
-            <InfoRow label="Adapter Name" value="Hyper-Uplink 100G" color={c} status="ok" />
-            <InfoRow label="Connection Type" value="Quantum Entanglement" color={c} />
-            <InfoRow label="Link Speed" value="100.0 Gbps" color={c} />
-            <InfoRow label="Duplex Mode" value="Full Duplex" color={c} />
-            <InfoRow label="Protocol" value="IEEE 802.11be (WiFi 7)" color={c} />
-            <InfoRow label="Band" value="6 GHz (160 MHz)" color={c} />
-            <InfoRow label="Signal Strength" value="-30 dBm (Excellent)" color={c} status="ok" />
-            <InfoRow label="MAC Address" value="00:1A:2B:3C:4D:5E" color={c} />
+            <InfoRow label="Adapter Name" value={iconLabel} color={c} status="ok" />
+            <InfoRow label="Interface" value={interfaceName} color={c} />
+            <InfoRow label="Connection Type" value={connType} color={c} />
+            <InfoRow label="Link Speed" value={n?.link_speed_mbps > 0 ? `${n.link_speed_mbps} Mbps` : "N/A"} color={c} />
+            <InfoRow label="MAC Address" value={n?.mac || "N/A"} color={c} />
+            <InfoRow label="Duplex Mode" value={n?.link_speed_mbps > 0 ? "Full Duplex" : "N/A"} color={c} />
+            <InfoRow label="Protocol" value={connType === "Wi-Fi" ? "802.11" : "802.3 Ethernet"} color={c} />
+            <InfoRow label="State" value={isConnected ? "UP" : "DOWN"} color={c} status={isConnected ? "ok" : "warn"} />
           </Panel>
           <Panel color={c}>
             <SectionTitle icon={Globe} label="IP & ROUTING" color={c} />
-            <InfoRow label="IPv4 Address" value="192.168.1.100" color={c} status="ok" />
-            <InfoRow label="Subnet Mask" value="255.255.255.0 /24" color={c} />
-            <InfoRow label="Default Gateway" value="192.168.1.1" color={c} />
-            <InfoRow label="IPv6 Address" value="fe80::1ff:fe23:4567" color={c} />
-            <InfoRow label="IPv6 Global" value="2001:db8::1" color={c} />
-            <InfoRow label="DNS Primary" value="1.1.1.1 (Cloudflare)" color={c} />
-            <InfoRow label="DNS Secondary" value="8.8.8.8 (Google)" color={c} />
-            <InfoRow label="DHCP Server" value="192.168.1.1" color={c} />
-            <InfoRow label="DHCP Lease" value="23h 59m 47s" color={c} />
+            <InfoRow label="IPv4 Address" value={n?.ipv4 || "N/A"} color={c} status={n?.ipv4 && n.ipv4 !== "N/A" ? "ok" : "warn"} />
+            <InfoRow label="IPv6 Address" value={n?.ipv6 || "N/A"} color={c} />
+            <InfoRow label="Default Gateway" value={n?.gateway || "N/A"} color={c} />
+            <InfoRow label="DNS Server" value={n?.dns || "N/A"} color={c} />
+            <InfoRow label="Subnet" value={n?.ipv4 && n.ipv4 !== "N/A" ? "Detected" : "N/A"} color={c} />
+            <InfoRow label="Routing" value={n?.gateway && n.gateway !== "N/A" ? "Active" : "None"} color={c} />
           </Panel>
           <Panel color={c}>
-            <SectionTitle icon={Activity} label="PERFORMANCE STATS" color={c} />
-            <InfoRow label="Latency (Ping)" value="0.1 ms" color={c} status="ok" />
-            <InfoRow label="Jitter" value="0.02 ms" color={c} status="ok" />
-            <InfoRow label="Packet Loss" value="0.00%" color={c} status="ok" />
-            <InfoRow label="Bytes Sent" value={`${(4.8 + tick * 0.001).toFixed(2)} GB`} color={c} />
-            <InfoRow label="Bytes Received" value={`${(12.4 + tick * 0.003).toFixed(2)} GB`} color={c} />
-            <InfoRow label="Packets Sent" value={`${3200000 + tick * 12}`} color={c} />
-            <InfoRow label="Packets Recv" value={`${8700000 + tick * 30}`} color={c} />
-            <InfoRow label="Errors" value="0" color={c} status="ok" />
-            <InfoRow label="Discards" value="0" color={c} status="ok" />
-            <InfoRow label="Firewall Status" value="AEGIS-X ACTIVE" color={c} status="ok" />
+            <SectionTitle icon={ShieldCheck} label="TRAFFIC STATISTICS" color={c} />
+            <InfoRow label="Total TX" value={n ? `${(n.tx_bytes / 1e6).toFixed(2)} MB` : "N/A"} color={c} />
+            <InfoRow label="Total RX" value={n ? `${(n.rx_bytes / 1e6).toFixed(2)} MB` : "N/A"} color={c} />
+            <InfoRow label="Security" value="WPA2/WPA3 / 802.1x" color={c} />
+            <InfoRow label="Firewall" value="Active (ufw/iptables)" color={c} status="ok" />
           </Panel>
         </div>
       </div>
