@@ -999,7 +999,8 @@ fn get_network_telemetry() -> NetworkTelemetry {
 
         // Link speed
         link_speed_mbps = read_sysfs(&format!("/sys/class/net/{}/speed", interface))
-            .and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+            .and_then(|s| s.trim().parse().ok()).unwrap_or(1000);
+        if link_speed_mbps == 0 { link_speed_mbps = 1000; }
 
         // RX/TX bytes
         rx_bytes = read_sysfs(&format!("/sys/class/net/{}/statistics/rx_bytes", interface))
