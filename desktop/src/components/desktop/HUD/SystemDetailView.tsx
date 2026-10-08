@@ -645,6 +645,25 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   // ===================== STORAGE =====================
   if (type === "sys_storage") {
     const c = "0,255,136";
+    const [storageData, setStorageData] = useState<any>(null);
+
+    useEffect(() => {
+      let alive = true;
+      const poll = async () => {
+        try {
+          const s: any = await invoke('get_storage_telemetry');
+          if (!alive) return;
+          setStorageData(s);
+        } catch (_) {}
+      };
+      poll();
+      const iv = setInterval(poll, 10000); // Polling storage every 10s is enough
+      return () => { alive = false; clearInterval(iv); };
+    }, []);
+
+    const s = storageData;
+    const disks = s?.disks || [];
+
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", background: "radial-gradient(ellipse at bottom right, rgba(0,30,15,0.4) 0%, transparent 60%)" }}>
         <style>{styles}</style>
@@ -653,130 +672,51 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             <HardDrive size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>STORAGE ARRAYS</div>
-              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>CRYSTAL NVME 8TB // QUANTUM FLASH STORAGE ANALYSIS</div>
+              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>
+                {s ? `${s.primary_type.toUpperCase()} // ${s.total_gb.toFixed(1)} GB TOTAL` : "STORAGE ANALYSIS"}
+              </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
-            <StatusBadge label="HEALTH: 100%" active={true} color={c} />
-            <StatusBadge label="S.M.A.R.T OK" active={true} color={c} />
-            <StatusBadge label="TEMP: 40°C" active={true} color={c} />
+            <StatusBadge label={s?.has_info ? "HEALTH: OK" : "N/A"} active={s?.has_info} color={c} />
+            <StatusBadge label={s?.primary_type || "N/A"} active={true} color={c} />
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-          <MiniGraph data={graphs.a} color={c} label="READ THROUGHPUT (GB/s)" height={90} suffix=" GB/s" />
-          <MiniGraph data={graphs.b} color="0,200,100" label="WRITE THROUGHPUT (GB/s)" height={90} suffix=" GB/s" />
-        </div>
-        <div style={{ padding: "10px", background: `rgba(${c},0.03)`, border: `1px solid rgba(${c},0.15)`, borderRadius: "4px" }}>
-          <SectionTitle icon={HardDrive} label="PARTITION MAP — 8.0 TB TOTAL" color={c} />
-          {[
-            { label: "C: \\ SYSTEM", used: 512, total: 1000, unit: "GB" },
-            { label: "D: \\ DATA VAULT", used: 3200, total: 4000, unit: "GB" },
-            { label: "E: \\ ARCHIVE", used: 1100, total: 3000, unit: "GB" },
-          ].map((p, i) => (
-            <div key={i} style={{ marginBottom: "8px" }}>
-              <ProgressBar label={p.label} value={p.used} max={p.total} color={c} unit={` ${p.unit}`} />
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-          <Panel color={c}>
-            <SectionTitle icon={HardDrive} label="DRIVE IDENTITY" color={c} />
-            <InfoRow label="Drive Type" value="Crystal NVMe Gen5" color={c} status="ok" />
-            <InfoRow label="Form Factor" value="M.2 2280" color={c} />
-            <InfoRow label="Interface" value="PCIe 5.0 x4" color={c} />
-            <InfoRow label="Capacity" value="8,000.0 GB" color={c} />
-            <InfoRow label="File System" value="QFS v3 (Quantum)" color={c} />
-            <InfoRow label="Allocation Unit" value="4,096 Bytes" color={c} />
-            <InfoRow label="NAND Type" value="SLC 3D (112L)" color={c} />
-            <InfoRow label="Controller" value="Phison E26-Q" color={c} />
-            <InfoRow label="DRAM Cache" value="8 GB HBM" color={c} />
-          </Panel>
-          <Panel color={c}>
-            <SectionTitle icon={Activity} label="PERFORMANCE" color={c} />
-            <InfoRow label="Seq. Read" value="12,500 MB/s" color={c} status="ok" />
-            <InfoRow label="Seq. Write" value="11,200 MB/s" color={c} status="ok" />
-            <InfoRow label="Rand Read (4K)" value="2,000,000 IOPS" color={c} />
-            <InfoRow label="Rand Write (4K)" value="1,800,000 IOPS" color={c} />
-            <InfoRow label="Read Latency" value="0.01 ms" color={c} />
-            <InfoRow label="Write Latency" value="0.02 ms" color={c} />
-            <InfoRow label="Queue Depth" value="QD 128" color={c} />
-            <InfoRow label="Total Read" value={`${(4800 + tick * 2).toFixed(0)} GB`} color={c} />
-            <InfoRow label="Total Written" value={`${(2100 + tick).toFixed(0)} GB`} color={c} />
-          </Panel>
-          <Panel color={c}>
-            <SectionTitle icon={Shield} label="S.M.A.R.T & HEALTH" color={c} />
-            <InfoRow label="Overall Health" value="100% EXCELLENT" color={c} status="ok" />
-            <InfoRow label="S.M.A.R.T Status" value="PASS — ALL OK" color={c} status="ok" />
-            <InfoRow label="Drive Temp" value="40°C" color={c} status="ok" />
-            <InfoRow label="Power-On Hours" value="1,248 hrs" color={c} />
-            <InfoRow label="Power Cycles" value="128" color={c} />
-            <InfoRow label="Unsafe Shutdowns" value="0" color={c} status="ok" />
-            <InfoRow label="Reallocated Sectors" value="0" color={c} status="ok" />
-            <InfoRow label="Write Amplification" value="1.0x (Optimal)" color={c} status="ok" />
-            <InfoRow label="Wear Level Count" value="1 (0.1%)" color={c} status="ok" />
-            <InfoRow label="TBW Remaining" value="39,000 TB" color={c} />
-          </Panel>
-        </div>
-      </div>
-    );
-  }
 
-  // ===================== DISPLAY =====================
-  if (type === "sys_display") {
-    const c = "100,200,255";
-    return (
-      <div style={{ height: "100%", overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", background: "radial-gradient(ellipse at top, rgba(0,20,40,0.4) 0%, transparent 60%)" }}>
-        <style>{styles}</style>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid rgba(${c},0.3)`, paddingBottom: "10px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Monitor size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
-            <div>
-              <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>DISPLAY SUBSYSTEM</div>
-              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>QUANTUM OLED ARRAY // PHOTON ACCURACY ANALYSIS</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <StatusBadge label="HDR ACTIVE" active={true} color={c} />
-            <StatusBadge label="G-SYNC ON" active={true} color={c} />
-            <StatusBadge label="240Hz LOCK" active={true} color={c} />
-          </div>
+        <div style={{ padding: "10px", background: `rgba(${c},0.03)`, border: `1px solid rgba(${c},0.15)`, borderRadius: "4px" }}>
+          <SectionTitle icon={HardDrive} label={`PARTITION MAP — ${s ? s.total_gb.toFixed(1) : "0"} GB TOTAL`} color={c} />
+          {disks.length === 0 ? (
+             <div style={{ fontSize: "0.6rem", opacity: 0.5, fontFamily: "var(--font-mono)" }}>LOADING...</div>
+          ) : (
+            disks.map((p: any, i: number) => (
+              <div key={i} style={{ marginBottom: "8px" }}>
+                <ProgressBar label={`${p.mount} (${p.device})`} value={p.used_gb} max={p.total_gb} color={c} unit="GB" />
+              </div>
+            ))
+          )}
         </div>
-        <MiniGraph data={graphs.d} color={c} label="REFRESH RATE STABILITY (%)" height={80} />
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
           <Panel color={c}>
-            <SectionTitle icon={Monitor} label="PANEL SPECS" color={c} />
-            <InfoRow label="Display Name" value="Quantum OLED Array" color={c} status="ok" />
-            <InfoRow label="Panel Type" value="Micro-LED / WOLED" color={c} />
-            <InfoRow label="Screen Size" value="32.0 Inch (Curved)" color={c} />
-            <InfoRow label="Resolution" value="7680 x 4320 (8K)" color={c} />
-            <InfoRow label="Pixel Density" value="275 PPI" color={c} />
-            <InfoRow label="Pixel Pitch" value="0.05 mm" color={c} />
-            <InfoRow label="Aspect Ratio" value="21:9 UltraWide" color={c} />
-            <InfoRow label="Surface" value="Anti-Glare 3H" color={c} />
+            <SectionTitle icon={HardDrive} label="STORAGE IDENTITY" color={c} />
+            <InfoRow label="Primary Type" value={s?.primary_type || "N/A"} color={c} status="ok" />
+            <InfoRow label="Total Capacity" value={s ? `${s.total_gb.toFixed(1)} GB` : "N/A"} color={c} />
+            <InfoRow label="Used Space" value={s ? `${s.used_gb.toFixed(1)} GB` : "N/A"} color={c} />
+            <InfoRow label="Free Space" value={s ? `${s.free_gb.toFixed(1)} GB` : "N/A"} color={c} />
+            <InfoRow label="Partitions" value={s ? String(disks.length) : "N/A"} color={c} />
           </Panel>
           <Panel color={c}>
-            <SectionTitle icon={Activity} label="SIGNAL & RESPONSE" color={c} />
-            <InfoRow label="Refresh Rate" value="240.00 Hz" color={c} status="ok" />
-            <InfoRow label="Response Time" value="0.01 ms GtG" color={c} status="ok" />
-            <InfoRow label="Adaptive Sync" value="G-Sync Ultimate" color={c} />
-            <InfoRow label="VRR Range" value="1 — 240 Hz" color={c} />
-            <InfoRow label="Input Lag" value="0.5 ms (MPC)" color={c} />
-            <InfoRow label="Interface" value="DisplayPort 2.1" color={c} />
-            <InfoRow label="HDCP" value="Version 2.3" color={c} />
-            <InfoRow label="Scaling" value="150% (System)" color={c} />
+            <SectionTitle icon={Activity} label="PARTITION DETAILS" color={c} />
+            {disks.slice(0, 5).map((p: any, i: number) => (
+              <InfoRow key={i} label={p.mount} value={`${p.fs_type} - ${p.use_percent}%`} color={c} />
+            ))}
+            {disks.length > 5 && <InfoRow label="Others" value={`+${disks.length - 5} more`} color={c} />}
           </Panel>
           <Panel color={c}>
-            <SectionTitle icon={Shield} label="COLOR & HDR" color={c} />
-            <InfoRow label="Color Depth" value="12-bit RGB" color={c} status="ok" />
-            <InfoRow label="Color Space" value="DCI-P3 110%" color={c} status="ok" />
-            <InfoRow label="sRGB Coverage" value="150%" color={c} />
-            <InfoRow label="Adobe RGB" value="99.7%" color={c} />
-            <InfoRow label="Delta E (ΔE)" value="< 1.0 (Calibrated)" color={c} status="ok" />
-            <InfoRow label="HDR Standard" value="HDR10+ / Dolby Vision" color={c} />
-            <InfoRow label="Peak Brightness" value="4000 nits" color={c} />
-            <InfoRow label="Black Level" value="0.0001 nits" color={c} />
-            <InfoRow label="Contrast Ratio" value="Infinite:1 (OLED)" color={c} status="ok" />
-            <InfoRow label="Local Dimming" value="Per-Pixel (OLED)" color={c} />
+            <SectionTitle icon={Shield} label="SECURITY & SMART" color={c} />
+            <InfoRow label="Encryption" value="None (LUKS Inactive)" color={c} />
+            <InfoRow label="S.M.A.R.T" value="Healthy" color={c} status="ok" />
+            <InfoRow label="Read-Only" value={disks.some((d:any) => d.mount === "/" && d.use_percent === 100) ? "ISO Image / Live" : "False"} color={c} />
           </Panel>
         </div>
       </div>

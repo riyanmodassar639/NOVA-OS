@@ -1072,7 +1072,7 @@ pub struct StorageTelemetry {
 #[tauri::command]
 fn get_storage_telemetry() -> StorageTelemetry {
     let mut disks: Vec<DiskInfo> = Vec::new();
-    let df = run_cmd("df", &["-T", "-BGB", "--output=source,fstype,size,used,avail,pcent,target"]);
+    let df = run_cmd("df", &["-BGB", "--output=source,fstype,size,used,avail,pcent,target"]);
     let skip_fs = ["tmpfs", "devtmpfs", "squashfs", "overlay", "udev", "cgroupfs", "efivarfs", "proc", "sysfs"];
 
     for line in df.lines().skip(1) {
