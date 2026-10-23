@@ -583,15 +583,18 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
     const prevBytes = useRef({ tx: 0, rx: 0, time: 0 });
 
     const formatSpeed = (bps: number) => {
-      if (!bps || bps <= 0) return "0.00 MB/s";
+      if (!bps || bps <= 0) return "0.0 KB/s (Idle)";
+      if (bps < 1024) return `${Math.round(bps)} B/s`;
       if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
       return `${(bps / (1024 * 1024)).toFixed(2)} MB/s`;
     };
 
     const formatBytes = (bytes: number) => {
-      if (!bytes || bytes <= 0) return "0.00 MB";
+      if (!bytes || bytes <= 0) return "0 B";
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
       if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
-      return `${(bytes / 1e6).toFixed(2)} MB`;
+      return `${(bytes / 1e6).toFixed(1)} MB`;
     };
 
     useEffect(() => {

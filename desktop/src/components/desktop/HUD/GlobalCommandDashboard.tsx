@@ -66,11 +66,18 @@ const SectionHeader = ({ icon: Icon, title, color, appId, appLabel, onOpenSubApp
 );
 
 const formatBandwidth = (bps: number) => {
-  if (!bps || bps <= 0) return "0.00 MB/s";
-  if (bps < 1024 * 1024) {
-    return `${(bps / 1024).toFixed(1)} KB/s`;
-  }
+  if (!bps || bps <= 0) return "0.0 KB/s (Idle)";
+  if (bps < 1024) return `${Math.round(bps)} B/s`;
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
   return `${(bps / (1024 * 1024)).toFixed(2)} MB/s`;
+};
+
+const formatBytes = (bytes: number) => {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
 const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenSubApp }) => {
@@ -337,8 +344,8 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
              <MiniDetail label="DNS" value={netTelemetry?.dns || "N/A"} color="150,100,255" />
              <MiniDetail label="LINK SPEED" value={netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "N/A"} color="150,100,255" />
              <MiniDetail label="MAC" value={netTelemetry?.mac || "N/A"} color="150,100,255" />
-             <MiniDetail label="TX TOTAL" value={netTelemetry ? (netTelemetry.tx_bytes >= 1e9 ? `${(netTelemetry.tx_bytes / 1e9).toFixed(2)} GB` : `${(netTelemetry.tx_bytes / 1e6).toFixed(1)} MB`) : "N/A"} color="150,100,255" />
-             <MiniDetail label="RX TOTAL" value={netTelemetry ? (netTelemetry.rx_bytes >= 1e9 ? `${(netTelemetry.rx_bytes / 1e9).toFixed(2)} GB` : `${(netTelemetry.rx_bytes / 1e6).toFixed(1)} MB`) : "N/A"} color="150,100,255" />
+             <MiniDetail label="TX TOTAL" value={netTelemetry ? formatBytes(netTelemetry.tx_bytes) : "N/A"} color="150,100,255" />
+             <MiniDetail label="RX TOTAL" value={netTelemetry ? formatBytes(netTelemetry.rx_bytes) : "N/A"} color="150,100,255" />
           </div>
         </div>
 
