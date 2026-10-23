@@ -4,6 +4,7 @@ import SettingsApp from "./SettingsApp";
 import SystemDetailView from "./SystemDetailView";
 import GlobalCommandDashboard from "./GlobalCommandDashboard";
 import SecurityProtocolApp from "./SecurityProtocolApp";
+import TerminalApp from "../apps/TerminalApp";
 
 interface FloatingAppWindowProps {
   appId: string | null;
@@ -239,6 +240,7 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
 
             {appId === "sys_command" && <GlobalCommandDashboard onOpenSubApp={onOpenSubApp} />}
             {appId === "security" && <SecurityProtocolApp />}
+            {appId === "terminal" && <TerminalApp />}
 
             {appId === "files" && (
               <div style={{ padding: "20px", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px", overflowY: "auto", height: "100%" }}>
@@ -262,7 +264,7 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
               </div>
             )}
 
-            {appId !== "files" && appId !== "browser" && appId !== "settings" && !appId?.startsWith("sys_") && (
+            {appId !== "files" && appId !== "browser" && appId !== "settings" && appId !== "security" && appId !== "terminal" && !appId?.startsWith("sys_") && !appId?.startsWith("net_") && (
               <div style={{ padding: "20px", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "20px" }}>
                 <div className="hud-radar-wrap" style={{ width: "80px", height: "80px", opacity: 0.5 }}>
                   <div className="hud-radar-sweep" />

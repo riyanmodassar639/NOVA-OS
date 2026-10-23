@@ -17,5 +17,5 @@ export const APP_REGISTRY: SystemApp[] = [
   { id: "gallery", label: "VISUALS", iconName: "Image", type: "internal" },
   { id: "map", label: "GEO_LOC", iconName: "Map", type: "internal" },
   { id: "settings", label: "SYS_CONFIG", iconName: "Settings", type: "internal" },
-  { id: "terminal", label: "SYS_TERM", iconName: "Terminal", type: "external" },
+  { id: "terminal", label: "SYS_TERM", iconName: "Terminal", type: "internal" },
 ];

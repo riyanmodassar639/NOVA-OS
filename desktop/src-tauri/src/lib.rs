@@ -413,6 +413,39 @@ fn execute_system_command(cmd: &str) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn run_terminal_command(cmd: &str) -> Result<String, String> {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+
+    let output = if cfg!(target_os = "windows") {
+        Command::new("powershell")
+            .args(["-NoProfile", "-Command", trimmed])
+            .output()
+    } else {
+        Command::new("bash")
+            .args(["-c", trimmed])
+            .output()
+    };
+
+    match output {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            if !stderr.is_empty() && stdout.is_empty() {
+                Ok(stderr)
+            } else if !stderr.is_empty() {
+                Ok(format!("{}\n{}", stdout, stderr))
+            } else {
+                Ok(stdout)
+            }
+        },
+        Err(e) => Err(format!("Command failed to execute: {}", e)),
+    }
+}
+
 // ─── Memory Telemetry ───────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone)]
@@ -1621,6 +1654,7 @@ pub fn run() {
             get_display_telemetry,
             launch_external_app,
             execute_system_command,
+            run_terminal_command,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
