@@ -323,17 +323,20 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(150,100,255,0.02)", padding: "15px", border: "1px solid rgba(150,100,255,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Radio} title="NETWORK UPLINK" color="150,100,255" appId="sys_network" appLabel="NETWORK DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
-            <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label={`TX — ${formatBandwidth(currentBandwidth.current.txSpeed)}`} height={45} suffix="%" />
-            <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label={`RX — ${formatBandwidth(currentBandwidth.current.rxSpeed)}`} height={45} suffix="%" />
+            <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label={`TX — ${formatBandwidth(currentBandwidth.current.txSpeed)} [${netTelemetry?.conn_type || "NET"}]`} height={45} suffix="%" />
+            <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label={`RX — ${formatBandwidth(currentBandwidth.current.rxSpeed)} [${netTelemetry?.conn_type || "NET"}]`} height={45} suffix="%" />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px", marginTop: "5px" }}>
+             <MiniDetail label="NETWORK" value={netTelemetry?.network_name || "N/A"} color="150,100,255" />
+             <MiniDetail label="TYPE" value={netTelemetry?.conn_type || "N/A"} color="150,100,255" />
              <MiniDetail label="INTERFACE" value={netTelemetry?.interface || "N/A"} color="150,100,255" />
+             <MiniDetail label="SIGNAL" value={netTelemetry?.signal_strength != null ? `${netTelemetry.signal_strength}%` : "N/A"} color="150,100,255" />
              <MiniDetail label="IPv4" value={netTelemetry?.ipv4 || "N/A"} color="150,100,255" />
              <MiniDetail label="IPv6" value={netTelemetry?.ipv6 || "N/A"} color="150,100,255" />
-             <MiniDetail label="MAC" value={netTelemetry?.mac || "N/A"} color="150,100,255" />
              <MiniDetail label="GATEWAY" value={netTelemetry?.gateway || "N/A"} color="150,100,255" />
              <MiniDetail label="DNS" value={netTelemetry?.dns || "N/A"} color="150,100,255" />
              <MiniDetail label="LINK SPEED" value={netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "N/A"} color="150,100,255" />
+             <MiniDetail label="MAC" value={netTelemetry?.mac || "N/A"} color="150,100,255" />
              <MiniDetail label="TX TOTAL" value={netTelemetry ? (netTelemetry.tx_bytes >= 1e9 ? `${(netTelemetry.tx_bytes / 1e9).toFixed(2)} GB` : `${(netTelemetry.tx_bytes / 1e6).toFixed(1)} MB`) : "N/A"} color="150,100,255" />
              <MiniDetail label="RX TOTAL" value={netTelemetry ? (netTelemetry.rx_bytes >= 1e9 ? `${(netTelemetry.rx_bytes / 1e9).toFixed(2)} GB` : `${(netTelemetry.rx_bytes / 1e6).toFixed(1)} MB`) : "N/A"} color="150,100,255" />
           </div>

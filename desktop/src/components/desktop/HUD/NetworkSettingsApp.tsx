@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Radio, Activity, ShieldCheck, Globe, ToggleRight, ToggleLeft, Wifi, Lock, X, Settings2, RadioTower, Plane, Network, Phone, ChevronLeft } from 'lucide-react';
 
 const GlassPanel = ({ children, style, onClick, hoverable = false }: any) => {
@@ -95,7 +96,13 @@ const BackHeader = ({ onBack, title, subtitle }: any) => {
   );
 };
 
-const AdvancedNetworkView = ({ onBack }: { onBack: () => void }) => {
+const AdvancedNetworkView = ({ onBack, netData }: { onBack: () => void; netData?: any }) => {
+  const isBridge = netData?.conn_type?.includes("Bridge") || netData?.conn_type?.includes("Virtual");
+  const manufacturer = isBridge ? "VirtualBox / Hypervisor" : "OEM Network Interface";
+  const description = netData?.interface ? `${netData.interface} (${netData.conn_type || 'Ethernet'})` : "Network Controller";
+  const driver = "Linux Kernel In-Tree (Active)";
+  const mac = netData?.mac || "N/A";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "20px" }}>
       <BackHeader onBack={onBack} title="Advanced Network Settings" subtitle="ADAPTER METRICS // FIREWALL ROUTING" />
@@ -103,10 +110,10 @@ const AdvancedNetworkView = ({ onBack }: { onBack: () => void }) => {
          <GlassPanel style={{ padding: "20px" }}>
             <h3 style={{ margin: "0 0 15px 0", color: "#00e5ff", letterSpacing: "1px" }}>Hardware Properties</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <NetDetail label="Manufacturer" value="NovaCore Industries" />
-              <NetDetail label="Description" value="Quantum Wi-Fi 7 Network Adapter" />
-              <NetDetail label="Driver version" value="v9.14.22.4" />
-              <NetDetail label="Physical Address (MAC)" value="00-1B-44-11-3A-B7" />
+              <NetDetail label="Manufacturer" value={manufacturer} />
+              <NetDetail label="Description" value={description} />
+              <NetDetail label="Driver version" value={driver} />
+              <NetDetail label="Physical Address (MAC)" value={mac} />
             </div>
             <button style={{ marginTop: "20px", padding: "8px 15px", background: "rgba(0,229,255,0.1)", border: "1px solid #00e5ff", color: "#00e5ff", borderRadius: "4px", cursor: "pointer", width: "100%" }}>View More Properties</button>
          </GlassPanel>
@@ -281,10 +288,60 @@ const NetworkSettingsApp = () => {
   const [mobileHotspotOn, setMobileHotspotOn] = useState(false);
   const [airplaneModeOn, setAirplaneModeOn] = useState(false);
   const [addModal, setAddModal] = useState<string | null>(null);
-  
   const [section, setSection] = useState('main');
 
-  if (section === 'net_advanced') return <AdvancedNetworkView onBack={() => setSection('main')} />;
+  const [netData, setNetData] = useState<any>(null);
+  const [wifiNetworks, setWifiNetworks] = useState<any[]>([]);
+  const [netSpeed, setNetSpeed] = useState({ txSpeed: 0, rxSpeed: 0 });
+  const prevBytes = useRef({ tx: 0, rx: 0, time: 0 });
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const n: any = await invoke('get_network_telemetry');
+        if (!alive) return;
+        setNetData(n);
+
+        const now = Date.now();
+        if (prevBytes.current.time > 0) {
+          const timeDiff = (now - prevBytes.current.time) / 1000;
+          if (timeDiff > 0) {
+            const txDelta = Math.max(0, n.tx_bytes - prevBytes.current.tx);
+            const rxDelta = Math.max(0, n.rx_bytes - prevBytes.current.rx);
+            setNetSpeed({ txSpeed: txDelta / timeDiff, rxSpeed: rxDelta / timeDiff });
+          }
+        }
+        prevBytes.current = { tx: n.tx_bytes, rx: n.rx_bytes, time: now };
+      } catch (_) {}
+    };
+
+    const scanWifi = async () => {
+      try {
+        const w: any = await invoke('get_wifi_networks');
+        if (alive && Array.isArray(w)) setWifiNetworks(w);
+      } catch (_) {}
+    };
+
+    poll();
+    scanWifi();
+    const iv = setInterval(poll, 1000);
+    const ivWifi = setInterval(scanWifi, 5000);
+    return () => { alive = false; clearInterval(iv); clearInterval(ivWifi); };
+  }, []);
+
+  const formatSpeed = (bps: number) => {
+    if (!bps || bps <= 0) return { val: "0.0", unit: "KB/s" };
+    if (bps < 1024 * 1024) return { val: (bps / 1024).toFixed(1), unit: "KB/s" };
+    return { val: (bps / (1024 * 1024)).toFixed(2), unit: "MB/s" };
+  };
+
+  const isConnected = netData?.has_info && netData?.interface !== "N/A";
+  const connType = netData?.conn_type || (netData?.interface?.startsWith("wl") ? "Wi-Fi" : "Ethernet");
+  const networkName = netData?.network_name || (isConnected ? (connType === "Wi-Fi" ? "Wi-Fi Network" : "Host Virtual Bridge") : "N/A");
+  const signalPct = netData?.signal_strength != null ? netData.signal_strength : (isConnected ? 100 : 0);
+
+  if (section === 'net_advanced') return <AdvancedNetworkView onBack={() => setSection('main')} netData={netData} />;
   if (section === 'net_vpn') return <VpnTunnelView onBack={() => setSection('main')} />;
   if (section === 'net_mobile_hotspot') return <MobileHotspotView onBack={() => setSection('main')} />;
   if (section === 'net_airplane_mode') return <AirplaneModeView onBack={() => setSection('main')} />;
@@ -299,15 +356,15 @@ const NetworkSettingsApp = () => {
           <Radio size={32} style={{ color: "#00ffff", filter: "drop-shadow(0 0 8px #00ffff)" }} />
           <div>
             <div style={{ fontSize: "1.4rem", letterSpacing: "4px", fontWeight: "bold", color: "#00ffff" }}>GLOBAL UPLINK ARRAY</div>
-            <div style={{ fontSize: "0.6rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>QUANTUM NETWORK INTERFACE // SECURE COMMS</div>
+            <div style={{ fontSize: "0.6rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>{netData?.interface?.toUpperCase() || "NET"} // {networkName.toUpperCase()}</div>
           </div>
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
           <div style={{ padding: "5px 10px", background: "rgba(0,255,255,0.1)", border: "1px solid rgba(0,255,255,0.4)", borderRadius: "4px", fontSize: "0.6rem", letterSpacing: "2px", display: "flex", alignItems: "center", gap: "5px" }}>
-            <Activity size={12} color="#00ffff" /> PING: 4ms
+            <Activity size={12} color="#00ffff" /> {connType.toUpperCase()}
           </div>
-          <div style={{ padding: "5px 10px", background: "rgba(0,255,100,0.1)", border: "1px solid rgba(0,255,100,0.4)", borderRadius: "4px", fontSize: "0.6rem", letterSpacing: "2px", display: "flex", alignItems: "center", gap: "5px", color: "#00ff66" }}>
-            <ShieldCheck size={12} /> SECURE
+          <div style={{ padding: "5px 10px", background: isConnected ? "rgba(0,255,100,0.1)" : "rgba(255,100,100,0.1)", border: `1px solid ${isConnected ? "rgba(0,255,100,0.4)" : "rgba(255,100,100,0.4)"}`, borderRadius: "4px", fontSize: "0.6rem", letterSpacing: "2px", display: "flex", alignItems: "center", gap: "5px", color: isConnected ? "#00ff66" : "#ff4444" }}>
+            <ShieldCheck size={12} /> {isConnected ? "CONNECTED" : "OFFLINE"}
           </div>
         </div>
       </div>
@@ -326,30 +383,30 @@ const NetworkSettingsApp = () => {
             </div>
           </div>
 
-          {wifiOn ? (
+          {wifiOn && isConnected ? (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <NetDetail label="SSID" value="QUANTUM_NET_5G" />
+                <NetDetail label="SSID / NETWORK" value={networkName} />
                 <NetDetail label="STATUS" value="CONNECTED" color="0,255,100" />
-                <NetDetail label="IPv4 ADDRESS" value="192.168.99.204" />
-                <NetDetail label="IPv6 ADDRESS" value="fe80::1a2b:3c4d" />
-                <NetDetail label="GATEWAY" value="192.168.99.1" />
-                <NetDetail label="SUBNET" value="255.255.255.0" />
-                <NetDetail label="DNS 1" value="1.1.1.1 (Cloudflare)" />
-                <NetDetail label="DNS 2" value="8.8.8.8 (Google)" />
-                <NetDetail label="ENCRYPTION" value="WPA3-Personal" />
-                <NetDetail label="PROTOCOL" value="Wi-Fi 7 (802.11be)" />
-                <NetDetail label="MAC ADDRESS" value="00:1A:2B:3C:4D:5E" />
-                <NetDetail label="BAND" value="6 GHz" />
+                <NetDetail label="IPv4 ADDRESS" value={netData?.ipv4 || "N/A"} />
+                <NetDetail label="IPv6 ADDRESS" value={netData?.ipv6 || "N/A"} />
+                <NetDetail label="GATEWAY" value={netData?.gateway || "N/A"} />
+                <NetDetail label="SUBNET" value={netData?.ipv4 && netData.ipv4 !== "N/A" ? "255.255.255.0 (/24)" : "N/A"} />
+                <NetDetail label="DNS 1" value={netData?.dns || "N/A"} />
+                <NetDetail label="DNS 2" value="8.8.8.8 (Google Fallback)" />
+                <NetDetail label="ENCRYPTION" value={connType === "Wi-Fi" ? "WPA2/WPA3-Personal" : "Bridged Direct Link"} />
+                <NetDetail label="PROTOCOL" value={connType === "Wi-Fi" ? "Wi-Fi (802.11ax/ac/n)" : "Ethernet (802.3 Gigabit)"} />
+                <NetDetail label="MAC ADDRESS" value={netData?.mac || "N/A"} />
+                <NetDetail label="BAND / LINK" value={netData?.link_speed_mbps > 0 ? `${netData.link_speed_mbps} Mbps` : (connType === "Wi-Fi" ? "2.4 / 5 GHz" : "1.0 Gbps Virtual Link")} />
               </div>
               
               <div style={{ marginTop: "10px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.6rem", letterSpacing: "1px", marginBottom: "5px", opacity: 0.7 }}>
-                  <span>BANDWIDTH ALLOCATION</span>
-                  <span>8.5 Gbps</span>
+                  <span>SIGNAL STRENGTH</span>
+                  <span>{signalPct}%</span>
                 </div>
                 <div style={{ height: "4px", background: "rgba(0,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: "85%", background: "#00ffff", boxShadow: "0 0 10px #00ffff" }} />
+                  <div style={{ height: "100%", width: `${signalPct}%`, background: "#00ffff", boxShadow: "0 0 10px #00ffff" }} />
                 </div>
               </div>
             </>
@@ -370,11 +427,11 @@ const NetworkSettingsApp = () => {
             <div style={{ display: "flex", gap: "20px", marginBottom: "15px" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: "0.55rem", opacity: 0.6, letterSpacing: "1px" }}>DOWNLINK (RX)</div>
-                <div style={{ fontSize: "1.4rem", color: "#00ffff", fontWeight: "bold" }}>1,204 <span style={{ fontSize: "0.8rem", opacity: 0.7 }}>MB/s</span></div>
+                <div style={{ fontSize: "1.4rem", color: "#00ffff", fontWeight: "bold" }}>{formatSpeed(netSpeed.rxSpeed).val} <span style={{ fontSize: "0.8rem", opacity: 0.7 }}>{formatSpeed(netSpeed.rxSpeed).unit}</span></div>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: "0.55rem", opacity: 0.6, letterSpacing: "1px" }}>UPLINK (TX)</div>
-                <div style={{ fontSize: "1.4rem", color: "#ff00ff", fontWeight: "bold" }}>432 <span style={{ fontSize: "0.8rem", opacity: 0.7 }}>MB/s</span></div>
+                <div style={{ fontSize: "1.4rem", color: "#ff00ff", fontWeight: "bold" }}>{formatSpeed(netSpeed.txSpeed).val} <span style={{ fontSize: "0.8rem", opacity: 0.7 }}>{formatSpeed(netSpeed.txSpeed).unit}</span></div>
               </div>
             </div>
             <div style={{ position: "relative", height: "80px", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(0,255,255,0.2)", borderRadius: "4px", overflow: "hidden" }}>
@@ -406,7 +463,7 @@ const NetworkSettingsApp = () => {
       {/* BOTTOM: AVAILABLE NETWORKS */}
       <div style={{ background: "rgba(0,255,255,0.03)", border: "1px solid rgba(0,255,255,0.1)", borderRadius: "4px", padding: "15px", flexShrink: 0 }}>
         <div style={{ fontSize: "0.8rem", letterSpacing: "2px", color: "#00ffff", display: "flex", alignItems: "center", gap: "8px", marginBottom: "15px", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Wifi size={16} /> DISCOVERED NODES</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Wifi size={16} /> DISCOVERED NODES & ACCESS POINTS</div>
           <button className="hud-clickable" onClick={() => setAddModal(addModal === 'wifi' ? null : 'wifi')} style={{ background: "rgba(0,255,255,0.1)", border: "1px solid #00ffff", color: "#00ffff", padding: "4px 12px", borderRadius: "4px", cursor: "pointer", fontSize: "0.7rem", letterSpacing: "1px", boxShadow: addModal === 'wifi' ? "0 0 5px rgba(0,255,255,0.5) inset" : "none" }}>{addModal === 'wifi' ? 'CANCEL' : 'ADD NETWORK'}</button>
         </div>
 
@@ -425,18 +482,16 @@ const NetworkSettingsApp = () => {
              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {addModal === 'wifi' ? (
                   <>
-                    <div className="hud-clickable" onClick={() => setAddModal('wifi_GUEST_NODE_BETA')} style={{ padding: "10px", border: "1px solid rgba(0,255,255,0.2)", borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color="#00ffff" /> <span>GUEST_NODE_BETA</span></div>
-                      <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>WPA2/WPA3</span>
-                    </div>
-                    <div className="hud-clickable" onClick={() => setAddModal('wifi_SECURE_ORBIT_LINK')} style={{ padding: "10px", border: "1px solid rgba(0,255,255,0.2)", borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color="#00ffff" /> <span>SECURE_ORBIT_LINK</span></div>
-                      <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>WPA3-Enterprise</span>
-                    </div>
-                    <div className="hud-clickable" onClick={() => setAddModal('wifi_OPEN_COMM_NET')} style={{ padding: "10px", border: "1px solid rgba(0,255,255,0.2)", borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#ffaa00" }}><ShieldCheck size={14} /> <span style={{ color: "#fff" }}>OPEN_COMM_NET</span></div>
-                      <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>Unsecured</span>
-                    </div>
+                    {wifiNetworks.length > 0 ? (
+                      wifiNetworks.map((net: any, idx: number) => (
+                        <div key={idx} className="hud-clickable" onClick={() => setAddModal(`wifi_${net.ssid}`)} style={{ padding: "10px", border: "1px solid rgba(0,255,255,0.2)", borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color="#00ffff" /> <span>{net.ssid}</span></div>
+                          <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>{net.security}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ padding: "10px", opacity: 0.7, fontSize: "0.8rem" }}>No extra broadcast beacons found in range.</div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -455,39 +510,44 @@ const NetworkSettingsApp = () => {
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          
-          <div className="hud-clickable" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: "15px", alignItems: "center", padding: "12px", background: "rgba(0,255,255,0.1)", border: "1px solid #00ffff", borderRadius: "4px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Lock size={14} color="#00ffff" />
-              <span style={{ fontWeight: "bold", letterSpacing: "1px", color: "#00ffff" }}>QUANTUM_NET_5G</span>
+          {wifiNetworks && wifiNetworks.length > 0 ? (
+            wifiNetworks.map((net: any, idx: number) => {
+              const isAct = net.ssid === networkName;
+              return (
+                <div key={idx} className="hud-clickable" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: "15px", alignItems: "center", padding: "12px", background: isAct ? "rgba(0,255,255,0.1)" : "rgba(0,0,0,0.4)", border: isAct ? "1px solid #00ffff" : "1px solid rgba(0,255,255,0.1)", borderRadius: "4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <Lock size={14} color={isAct ? "#00ffff" : "rgba(255,255,255,0.6)"} />
+                    <span style={{ fontWeight: isAct ? "bold" : "normal", letterSpacing: "1px", color: isAct ? "#00ffff" : "#fff" }}>{net.ssid}</span>
+                  </div>
+                  <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>{net.security || "WPA2/WPA3"}</div>
+                  <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>{net.freq_ghz} GHz</div>
+                  <div style={{ display: "flex", gap: "2px", alignItems: "flex-end", height: "14px" }}>
+                    <div style={{ width: "4px", height: "4px", background: net.signal_pct >= 20 ? "#00ffff" : "rgba(255,255,255,0.2)" }}></div>
+                    <div style={{ width: "4px", height: "8px", background: net.signal_pct >= 40 ? "#00ffff" : "rgba(255,255,255,0.2)" }}></div>
+                    <div style={{ width: "4px", height: "11px", background: net.signal_pct >= 70 ? "#00ffff" : "rgba(255,255,255,0.2)" }}></div>
+                    <div style={{ width: "4px", height: "14px", background: net.signal_pct >= 85 ? "#00ffff" : "rgba(255,255,255,0.2)", boxShadow: net.signal_pct >= 85 ? "0 0 5px #00ffff" : "none" }}></div>
+                  </div>
+                  <div style={{ fontSize: "0.65rem", color: isAct ? "#00ffff" : "rgba(255,255,255,0.5)", fontWeight: isAct ? "bold" : "normal" }}>{isAct ? "CONNECTED" : `${net.signal_pct}%`}</div>
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: "15px", alignItems: "center", padding: "12px", background: "rgba(0,255,255,0.1)", border: "1px solid #00ffff", borderRadius: "4px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <Wifi size={14} color="#00ffff" />
+                <span style={{ fontWeight: "bold", letterSpacing: "1px", color: "#00ffff" }}>{networkName}</span>
+              </div>
+              <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>{connType}</div>
+              <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>{netData?.interface || "enp0s3"}</div>
+              <div style={{ display: "flex", gap: "2px", alignItems: "flex-end", height: "14px" }}>
+                <div style={{ width: "4px", height: "4px", background: "#00ffff" }}></div>
+                <div style={{ width: "4px", height: "8px", background: "#00ffff" }}></div>
+                <div style={{ width: "4px", height: "11px", background: "#00ffff" }}></div>
+                <div style={{ width: "4px", height: "14px", background: "#00ffff", boxShadow: "0 0 5px #00ffff" }}></div>
+              </div>
+              <div style={{ fontSize: "0.65rem", color: "#00ffff", fontWeight: "bold" }}>CONNECTED</div>
             </div>
-            <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>WPA3-Personal</div>
-            <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>Ch 44 (6GHz)</div>
-            <div style={{ display: "flex", gap: "2px", alignItems: "flex-end", height: "14px" }}>
-              <div style={{ width: "4px", height: "4px", background: "#00ffff" }}></div>
-              <div style={{ width: "4px", height: "8px", background: "#00ffff" }}></div>
-              <div style={{ width: "4px", height: "11px", background: "#00ffff" }}></div>
-              <div style={{ width: "4px", height: "14px", background: "#00ffff", boxShadow: "0 0 5px #00ffff" }}></div>
-            </div>
-            <div style={{ fontSize: "0.65rem", color: "#00ffff", fontWeight: "bold" }}>CONNECTED</div>
-          </div>
-
-          <div className="hud-clickable" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", gap: "15px", alignItems: "center", padding: "12px", border: "1px solid rgba(0,255,255,0.1)", borderRadius: "4px", background: "rgba(0,0,0,0.4)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Lock size={14} style={{ opacity: 0.5 }} />
-              <span style={{ letterSpacing: "1px" }}>GUEST_NODE_BETA</span>
-            </div>
-            <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>WPA2/WPA3</div>
-            <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>Ch 11 (2.4GHz)</div>
-            <div style={{ display: "flex", gap: "2px", alignItems: "flex-end", height: "14px", opacity: 0.7 }}>
-              <div style={{ width: "4px", height: "4px", background: "#00ffff" }}></div>
-              <div style={{ width: "4px", height: "8px", background: "#00ffff" }}></div>
-              <div style={{ width: "4px", height: "11px", background: "#00ffff" }}></div>
-              <div style={{ width: "4px", height: "14px", background: "rgba(255,255,255,0.1)" }}></div>
-            </div>
-            <div style={{ fontSize: "0.65rem", opacity: 0.5 }}>SAVED</div>
-          </div>
-
+          )}
         </div>
       </div>
 

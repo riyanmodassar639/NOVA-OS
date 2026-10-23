@@ -942,6 +942,9 @@ fn get_gpu_telemetry() -> GpuTelemetry {
 #[derive(Serialize, Clone)]
 pub struct NetworkTelemetry {
     interface: String,
+    conn_type: String,       // "Wi-Fi" or "Ethernet"
+    network_name: String,    // Real SSID (e.g. "House 123 wifi", "Ali") or "Wired Gigabit LAN" / "Host Network Bridge"
+    signal_strength: u32,    // 0-100%
     ipv4: String,
     ipv6: String,
     mac: String,
@@ -951,6 +954,15 @@ pub struct NetworkTelemetry {
     rx_bytes: u64,
     tx_bytes: u64,
     has_info: bool,
+}
+
+#[derive(Serialize, Clone)]
+pub struct WifiNetworkInfo {
+    ssid: String,
+    signal: u32,
+    security: String,
+    bssid: String,
+    frequency_mhz: u32,
 }
 
 fn mac_to_eui64(mac: &str) -> String {
@@ -1184,9 +1196,131 @@ fn get_network_telemetry() -> NetworkTelemetry {
         }
     }
 
+    let mut conn_type: String;
+    let mut network_name = "N/A".to_string();
+    let mut signal_strength: u32 = 100;
+
+    let is_wifi = interface.starts_with("wl") 
+        || std::path::Path::new(&format!("/sys/class/net/{}/wireless", interface)).exists();
+
+    if is_wifi {
+        conn_type = "Wi-Fi".to_string();
+        let iw_link = run_cmd("iw", &["dev", &interface, "link"]);
+        for line in iw_link.lines() {
+            let l = line.trim();
+            if l.starts_with("SSID: ") {
+                network_name = l.replace("SSID: ", "").trim().to_string();
+            } else if l.starts_with("signal: ") {
+                let s_str = l.replace("signal: ", "").replace("dBm", "").trim().to_string();
+                if let Ok(dbm) = s_str.parse::<f32>() {
+                    signal_strength = ((dbm + 100.0) * 2.0).clamp(0.0, 100.0) as u32;
+                }
+            }
+        }
+        if network_name == "N/A" || network_name.is_empty() {
+            let id_out = run_cmd("iwgetid", &["-r", &interface]);
+            if !id_out.trim().is_empty() {
+                network_name = id_out.trim().to_string();
+            }
+        }
+        if network_name == "N/A" || network_name.is_empty() {
+            let nm_out = run_cmd("nmcli", &["-t", "-f", "active,ssid", "dev", "wifi"]);
+            for line in nm_out.lines() {
+                if line.starts_with("yes:") {
+                    network_name = line.replace("yes:", "").trim().to_string();
+                    break;
+                }
+            }
+        }
+        if network_name == "N/A" || network_name.is_empty() {
+            network_name = "Wireless Network".to_string();
+        }
+    } else {
+        conn_type = "Ethernet".to_string();
+        signal_strength = 100;
+
+        let dmi_prod = read_sysfs("/sys/class/dmi/id/product_name").unwrap_or_default();
+        let dmi_sys = read_sysfs("/sys/class/dmi/id/sys_vendor").unwrap_or_default();
+        let is_vm = dmi_prod.contains("VirtualBox") || dmi_prod.contains("VMware") || dmi_prod.contains("QEMU") || dmi_sys.contains("QEMU") || dmi_sys.contains("innotek");
+
+        if is_vm {
+            network_name = "Host Wi-Fi Bridge (Virtual Link)".to_string();
+        } else {
+            network_name = "Wired Gigabit LAN".to_string();
+        }
+    }
+
     let has_info = interface != "N/A";
-    NetworkTelemetry { interface, ipv4, ipv6, mac, gateway, dns,
-        link_speed_mbps, rx_bytes, tx_bytes, has_info }
+    NetworkTelemetry { 
+        interface, conn_type, network_name, signal_strength,
+        ipv4, ipv6, mac, gateway, dns,
+        link_speed_mbps, rx_bytes, tx_bytes, has_info 
+    }
+}
+
+#[tauri::command]
+fn get_wifi_networks() -> Vec<WifiNetworkInfo> {
+    let mut list: Vec<WifiNetworkInfo> = Vec::new();
+
+    let mut wlan_iface = "".to_string();
+    if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("wl") || std::path::Path::new(&format!("/sys/class/net/{}/wireless", name)).exists() {
+                wlan_iface = name;
+                break;
+            }
+        }
+    }
+
+    if !wlan_iface.is_empty() {
+        let out = run_cmd("iw", &["dev", &wlan_iface, "scan"]);
+        let mut cur_ssid = "".to_string();
+        let mut cur_bssid = "".to_string();
+        let mut cur_signal: u32 = 70;
+        let mut cur_freq: u32 = 2412;
+        let mut cur_sec = "Open".to_string();
+
+        for line in out.lines() {
+            let l = line.trim();
+            if l.starts_with("BSS ") {
+                if !cur_ssid.is_empty() {
+                    list.push(WifiNetworkInfo {
+                        ssid: cur_ssid.clone(),
+                        signal: cur_signal,
+                        security: cur_sec.clone(),
+                        bssid: cur_bssid.clone(),
+                        frequency_mhz: cur_freq,
+                    });
+                }
+                cur_bssid = l.split_whitespace().nth(1).unwrap_or("").trim_end_matches('(').to_string();
+                cur_ssid = "".to_string();
+                cur_sec = "Open".to_string();
+            } else if l.starts_with("SSID: ") {
+                cur_ssid = l.replace("SSID: ", "").trim().to_string();
+            } else if l.starts_with("signal: ") {
+                let val_str = l.replace("signal: ", "").replace("dBm", "").trim().to_string();
+                if let Ok(dbm) = val_str.parse::<f32>() {
+                    cur_signal = ((dbm + 100.0) * 2.0).clamp(0.0, 100.0) as u32;
+                }
+            } else if l.starts_with("freq: ") {
+                cur_freq = l.replace("freq: ", "").trim().parse().unwrap_or(2412);
+            } else if l.contains("RSN") || l.contains("WPA") {
+                cur_sec = "WPA2 / WPA3".to_string();
+            }
+        }
+        if !cur_ssid.is_empty() {
+            list.push(WifiNetworkInfo {
+                ssid: cur_ssid,
+                signal: cur_signal,
+                security: cur_sec,
+                bssid: cur_bssid,
+                frequency_mhz: cur_freq,
+            });
+        }
+    }
+
+    list
 }
 
 // ─── Storage Telemetry ────────────────────────────────────────────────────────
@@ -1479,6 +1613,7 @@ pub fn run() {
             get_memory_telemetry,
             get_gpu_telemetry,
             get_network_telemetry,
+            get_wifi_networks,
             get_storage_telemetry,
             get_system_info,
             get_audio_telemetry,

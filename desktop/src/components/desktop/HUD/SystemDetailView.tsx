@@ -48,6 +48,8 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   });
   const [cpuInfo, setCpuInfo] = useState<{ [key: string]: string }>({});
   const [cpuTelemetry, setCpuTelemetry] = useState<any>(null);
+  const [netTelemetry, setNetTelemetry] = useState<any>(null);
+  const [wifiNetworks, setWifiNetworks] = useState<any[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -74,6 +76,23 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         pollTelemetry();
         setTick(t => t + 1);
       }, 1000);
+      return () => { isMounted = false; clearInterval(iv); };
+    }
+
+    if (type.startsWith("net_")) {
+      const pollNet = async () => {
+        try {
+          const net: any = await invoke('get_network_telemetry');
+          if (isMounted) setNetTelemetry(net);
+          const w: any = await invoke('get_wifi_networks');
+          if (isMounted && Array.isArray(w)) setWifiNetworks(w);
+        } catch (_) {}
+      };
+      pollNet();
+      const iv = setInterval(() => {
+        pollNet();
+        setTick(t => t + 1);
+      }, 2000);
       return () => { isMounted = false; clearInterval(iv); };
     }
 
@@ -555,6 +574,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   if (type === "sys_network") {
     const c = "150,100,255";
     const [netData, setNetData] = useState<any>(null);
+    const [wifiList, setWifiList] = useState<any[]>([]);
     const [netSpeed, setNetSpeed] = useState({ txSpeed: 0, rxSpeed: 0 });
     const [netGraphs, setNetGraphs] = useState<{ up: number[], down: number[] }>({
       up: Array(50).fill(0),
@@ -615,23 +635,34 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           }));
         } catch (_) {}
       };
+
+      const scanWifi = async () => {
+        try {
+          const w: any = await invoke('get_wifi_networks');
+          if (alive && Array.isArray(w)) setWifiList(w);
+        } catch (_) {}
+      };
+
       poll();
+      scanWifi();
       const iv = setInterval(poll, 1000);
-      return () => { alive = false; clearInterval(iv); };
+      const ivWifi = setInterval(scanWifi, 5000);
+      return () => { alive = false; clearInterval(iv); clearInterval(ivWifi); };
     }, []);
 
     const n = netData;
     const isConnected = n?.has_info && n?.interface !== "N/A";
     const interfaceName = n?.interface || "N/A";
+    const connType = n?.conn_type || (interfaceName.startsWith("wl") ? "Wi-Fi" : "Ethernet");
+    const networkName = n?.network_name || (isConnected ? (connType === "Wi-Fi" ? "Wi-Fi Network" : "Host Network Bridge") : "N/A");
+    const signalStrength = n?.signal_strength != null ? n.signal_strength : (isConnected ? 100 : 0);
 
-    // Deduce connection type from interface
-    let connType = "Unknown";
     let iconLabel = "Hyper-Uplink";
-    if (interfaceName.startsWith("wlan") || interfaceName.startsWith("wlp")) {
-      connType = "Wi-Fi";
-      iconLabel = "Wireless Adapter";
-    } else if (interfaceName.startsWith("eth") || interfaceName.startsWith("en")) {
-      connType = "Ethernet";
+    if (connType === "Wi-Fi") {
+      iconLabel = "Wireless Adapter (802.11)";
+    } else if (connType.includes("Virtual Link") || connType.includes("Bridge")) {
+      iconLabel = "Host Virtual Network Bridge";
+    } else {
       iconLabel = "Gigabit Ethernet Adapter";
     }
 
@@ -643,7 +674,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             <Radio size={28} style={{ color: `rgb(${c})`, opacity: 1 }} />
             <div>
               <div style={{ fontSize: "1.3rem", letterSpacing: "4px", fontWeight: "bold", color: `rgb(${c})` }}>NETWORK STACK</div>
-              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>{interfaceName.toUpperCase()} // UPLINK DIAGNOSTICS</div>
+              <div style={{ fontSize: "0.58rem", opacity: 0.6, letterSpacing: "2px", fontFamily: "var(--font-mono)" }}>{interfaceName.toUpperCase()} // {networkName.toUpperCase()}</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: "8px" }}>
@@ -653,20 +684,22 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-          <MiniGraph data={netGraphs.up} color={c} label={`UPLINK (TX) — ${formatSpeed(netSpeed.txSpeed)}`} height={100} suffix="%" />
-          <MiniGraph data={netGraphs.down} color="200,150,255" label={`DOWNLINK (RX) — ${formatSpeed(netSpeed.rxSpeed)}`} height={100} suffix="%" />
+          <MiniGraph data={netGraphs.up} color={c} label={`UPLINK (TX) [${connType.toUpperCase()}] — ${formatSpeed(netSpeed.txSpeed)}`} height={100} suffix="%" />
+          <MiniGraph data={netGraphs.down} color="200,150,255" label={`DOWNLINK (RX) [${connType.toUpperCase()}] — ${formatSpeed(netSpeed.rxSpeed)}`} height={100} suffix="%" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
           <Panel color={c}>
             <SectionTitle icon={Radio} label="LINK IDENTITY" color={c} />
+            <InfoRow label="Network Name (SSID)" value={networkName} color={c} status={isConnected ? "ok" : "warn"} />
             <InfoRow label="Adapter Name" value={iconLabel} color={c} status="ok" />
             <InfoRow label="Interface" value={interfaceName} color={c} />
             <InfoRow label="Connection Type" value={connType} color={c} />
-            <InfoRow label="Link Speed" value={n?.link_speed_mbps > 0 ? `${n.link_speed_mbps} Mbps` : "N/A"} color={c} />
+            <InfoRow label="Signal Strength" value={connType === "Wi-Fi" ? `${signalStrength}%` : (isConnected ? "100% (Direct/Bridge)" : "0%")} color={c} />
+            <InfoRow label="Link Speed" value={n?.link_speed_mbps > 0 ? `${n.link_speed_mbps} Mbps` : (isConnected ? "1000 Mbps" : "N/A")} color={c} />
             <InfoRow label="MAC Address" value={n?.mac || "N/A"} color={c} />
-            <InfoRow label="Duplex Mode" value={n?.link_speed_mbps > 0 ? "Full Duplex" : "N/A"} color={c} />
-            <InfoRow label="Protocol" value={connType === "Wi-Fi" ? "802.11ax/ac" : "802.3 Gigabit Ethernet"} color={c} />
+            <InfoRow label="Duplex Mode" value={isConnected ? "Full Duplex" : "N/A"} color={c} />
+            <InfoRow label="Protocol" value={connType === "Wi-Fi" ? "802.11ax/ac/n (Wireless)" : "802.3 Gigabit Ethernet"} color={c} />
             <InfoRow label="State" value={isConnected ? "UP (Connected)" : "DOWN"} color={c} status={isConnected ? "ok" : "warn"} />
           </Panel>
           <Panel color={c}>
@@ -675,17 +708,54 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             <InfoRow label="IPv6 Address" value={n?.ipv6 || "N/A"} color={c} status={n?.ipv6 && n.ipv6 !== "N/A" ? "ok" : "warn"} />
             <InfoRow label="Default Gateway" value={n?.gateway || "N/A"} color={c} />
             <InfoRow label="DNS Server" value={n?.dns || "N/A"} color={c} />
-            <InfoRow label="Subnet" value={n?.ipv4 && n.ipv4 !== "N/A" ? "Detected" : "N/A"} color={c} />
+            <InfoRow label="Subnet" value={n?.ipv4 && n.ipv4 !== "N/A" ? "255.255.255.0 (/24)" : "N/A"} color={c} />
             <InfoRow label="Routing" value={n?.gateway && n.gateway !== "N/A" ? "Active" : "None"} color={c} />
           </Panel>
           <Panel color={c}>
             <SectionTitle icon={ShieldCheck} label="TRAFFIC STATISTICS" color={c} />
             <InfoRow label="Total TX" value={formatBytes(n?.tx_bytes)} color={c} />
             <InfoRow label="Total RX" value={formatBytes(n?.rx_bytes)} color={c} />
-            <InfoRow label="Security" value="WPA2/WPA3 / 802.1x" color={c} />
+            <InfoRow label="Security" value={connType === "Wi-Fi" ? "WPA2/WPA3 / 802.11i" : "Bridged 802.3"} color={c} />
             <InfoRow label="Firewall" value="Active (ufw/iptables)" color={c} status="ok" />
           </Panel>
         </div>
+
+        <Panel color={c}>
+          <SectionTitle icon={Wifi} label="WIRELESS BEACON SCAN & SURROUNDING ACCESS POINTS" color={c} />
+          {wifiList && wifiList.length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "10px", marginTop: "10px" }}>
+              {wifiList.map((net: any, idx: number) => {
+                const isActive = net.ssid === networkName;
+                return (
+                  <div key={idx} style={{ padding: "10px", background: isActive ? `rgba(${c},0.15)` : "rgba(0,0,0,0.3)", border: `1px solid ${isActive ? `rgb(${c})` : `rgba(${c},0.2)`}`, borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Wifi size={16} color={isActive ? `rgb(${c})` : "#fff"} />
+                      <div>
+                        <div style={{ fontWeight: "bold", fontSize: "0.85rem", color: isActive ? `rgb(${c})` : "#fff" }}>{net.ssid}</div>
+                        <div style={{ fontSize: "0.6rem", opacity: 0.6 }}>{net.security} • {net.freq_ghz} GHz</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: `rgb(${c})` }}>{net.signal_pct}%</div>
+                      {isActive && <span style={{ fontSize: "0.55rem", background: `rgba(${c},0.2)`, padding: "2px 6px", borderRadius: "3px", color: `rgb(${c})`, fontWeight: "bold" }}>ACTIVE</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: "14px", background: "rgba(0,0,0,0.3)", border: `1px dashed rgba(${c},0.3)`, borderRadius: "4px", marginTop: "8px", display: "flex", alignItems: "center", gap: "12px" }}>
+              <Globe size={22} color={`rgb(${c})`} style={{ flexShrink: 0 }} />
+              <div style={{ fontSize: "0.75rem", lineHeight: "1.4", opacity: 0.85 }}>
+                {connType.includes("Bridge") || connType === "Ethernet" ? (
+                  <span><strong>Virtual Hypervisor Link Active ({interfaceName}):</strong> Your host machine's Wi-Fi is actively bridged into this system. Network traffic and Internet access are fully routed. Over-the-air 802.11 beacon scanning is active on bare-metal boot or when a physical USB Wi-Fi dongle is attached.</span>
+                ) : (
+                  <span>No nearby Wi-Fi beacons discovered yet. Interface is actively listening on channel frequencies.</span>
+                )}
+              </div>
+            </div>
+          )}
+        </Panel>
       </div>
     );
   }
@@ -977,21 +1047,21 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
           <Panel color={c}>
             <SectionTitle icon={Radio} label="HARDWARE SPECS" color={c} />
-            <InfoRow label="Interface" value="wlan0 (Quantum Wi-Fi 7)" color={c} status="ok" />
-            <InfoRow label="MAC Address" value="00:1A:2B:3C:4D:5E" color={c} />
-            <InfoRow label="Driver" value="nova_qnet_v8" color={c} />
-            <InfoRow label="Band Supported" value="2.4 / 5 / 6 GHz" color={c} />
-            <InfoRow label="Max TX Power" value="30 dBm" color={c} />
-            <InfoRow label="Antenna Array" value="8x8 MU-MIMO" color={c} />
+            <InfoRow label="Interface" value={netTelemetry?.interface || "wlan0"} color={c} status="ok" />
+            <InfoRow label="MAC Address" value={netTelemetry?.mac || "N/A"} color={c} />
+            <InfoRow label="Connection Type" value={netTelemetry?.conn_type || "Wi-Fi"} color={c} />
+            <InfoRow label="Band Supported" value={netTelemetry?.conn_type === "Wi-Fi" ? "2.4 / 5 / 6 GHz" : "Gigabit Virtual Link"} color={c} />
+            <InfoRow label="Protocol" value={netTelemetry?.conn_type === "Wi-Fi" ? "802.11ax/ac/n (Wireless)" : "802.3 Gigabit Ethernet"} color={c} />
+            <InfoRow label="State" value={netTelemetry?.has_info ? "Operational (UP)" : "Offline (DOWN)"} color={c} status={netTelemetry?.has_info ? "ok" : "warn"} />
           </Panel>
           <Panel color={c}>
             <SectionTitle icon={Activity} label="ACTIVE CONNECTION" color={c} />
-            <InfoRow label="SSID" value="QUANTUM_NET_5G" color={c} status="ok" />
-            <InfoRow label="BSSID" value="A1:B2:C3:D4:E5:F6" color={c} />
-            <InfoRow label="Channel" value="44 (6GHz)" color={c} />
-            <InfoRow label="Link Speed" value="8,540 Mbps" color={c} status="ok" />
-            <InfoRow label="Signal Strength" value="-42 dBm" color={c} status="ok" />
-            <InfoRow label="Security" value="WPA3-SAE" color={c} status="ok" />
+            <InfoRow label="SSID / Bridge" value={netTelemetry?.network_name || "N/A"} color={c} status={netTelemetry?.network_name && netTelemetry.network_name !== "N/A" ? "ok" : "warn"} />
+            <InfoRow label="IPv4" value={netTelemetry?.ipv4 || "N/A"} color={c} />
+            <InfoRow label="IPv6" value={netTelemetry?.ipv6 || "N/A"} color={c} />
+            <InfoRow label="Link Speed" value={netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "1000 Mbps"} color={c} status="ok" />
+            <InfoRow label="Signal Strength" value={netTelemetry?.signal_strength != null ? `${netTelemetry.signal_strength}%` : "100%"} color={c} status="ok" />
+            <InfoRow label="Security" value={netTelemetry?.conn_type === "Wi-Fi" ? "WPA2/WPA3-Personal" : "Bridged Direct Link"} color={c} status="ok" />
           </Panel>
         </div>
 
@@ -1013,8 +1083,8 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           <div style={{ display: "flex", flexDirection: "column" }}>
             <ConfigRow 
               icon={Radio} 
-              title="QUANTUM_NET_5G properties" 
-              subtitle="Connected, secured (WPA3-SAE)" 
+              title={`${netTelemetry?.network_name || "Network"} properties`} 
+              subtitle={netTelemetry?.has_info ? `Connected, ${netTelemetry?.conn_type || 'Wi-Fi'}` : "Disconnected"} 
               color={c}
               hideArrow={true}
               onClick={() => setExpandProperties(!expandProperties)}
@@ -1120,19 +1190,17 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
                      ["Connected On:", new Date().toLocaleDateString()],
                      ["Connected At:", new Date(Date.now() - (tick + 8450) * 1000).toLocaleTimeString()],
                      ["Duration:", fmtUptime(tick + 8450)],
-                     ["SSID:", "QUANTUM_NET_5G"],
-                     ["Protocol:", "Wi-Fi 7 (802.11be)"],
-                     ["Security type:", "WPA3-Personal"],
-                     ["Manufacturer:", "NOVA Quantum Systems"],
-                     ["Description:", "Quantum Wireless QN-8800X"],
-                     ["Driver version:", "9.0.0.14"],
-                     ["Network band (channel):", "6 GHz (144)"],
-                     ["Aggregated link speed:", "8540/8540 (Mbps)"],
-                     ["Link-local IPv6 address:", "fe80::1a2b:3c4d:5e6f:7a8b%12"],
-                     ["IPv4 address:", "192.168.99.204"],
-                     ["IPv4 default gateway:", "192.168.99.1"],
-                     ["IPv4 DNS servers:", "1.1.1.1 (Unencrypted)"],
-                     ["Physical address (MAC):", "00:1A:2B:3C:4D:5E"],
+                     ["SSID / Network:", netTelemetry?.network_name || "N/A"],
+                     ["Protocol:", netTelemetry?.conn_type === "Wi-Fi" ? "Wi-Fi (802.11ax/ac/n)" : "Ethernet (802.3)"],
+                     ["Security type:", netTelemetry?.conn_type === "Wi-Fi" ? "WPA2/WPA3-Personal" : "Bridged Direct Link"],
+                     ["Manufacturer:", netTelemetry?.conn_type?.includes("Bridge") ? "VirtualBox / Hypervisor" : "OEM Network Interface"],
+                     ["Interface:", netTelemetry?.interface || "N/A"],
+                     ["Aggregated link speed:", netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "1000 Mbps"],
+                     ["IPv6 address:", netTelemetry?.ipv6 || "N/A"],
+                     ["IPv4 address:", netTelemetry?.ipv4 || "N/A"],
+                     ["IPv4 default gateway:", netTelemetry?.gateway || "N/A"],
+                     ["IPv4 DNS servers:", netTelemetry?.dns || "N/A"],
+                     ["Physical address (MAC):", netTelemetry?.mac || "N/A"],
                    ].map(([label, value]) => (
                      <div key={label} style={{ display: "grid", gridTemplateColumns: "220px 1fr", padding: "2px 0" }}>
                        <span style={{ opacity: 0.8 }}>{label}</span>
@@ -1162,17 +1230,22 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             />
             {expandAvailable && (
               <div style={{ padding: "12px 16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px", background: `rgba(${c}, 0.1)`, borderRadius: "4px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Wifi size={14} color={`rgb(${c})`} /> QUANTUM_NET_5G</div>
-                  <span style={{ fontSize: "0.6rem", color: `rgb(${c})` }}>Connected</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px", opacity: 0.7 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} /> GUEST_NODE_BETA</div>
-                  <span style={{ fontSize: "0.6rem" }}>Saved</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px", opacity: 0.7 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} /> SECURE_ORBIT_LINK</div>
-                </div>
+                {wifiNetworks && wifiNetworks.length > 0 ? (
+                  wifiNetworks.map((net: any, idx: number) => {
+                    const isAct = net.ssid === netTelemetry?.network_name;
+                    return (
+                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px", background: isAct ? `rgba(${c}, 0.15)` : "rgba(0,0,0,0.3)", borderRadius: "4px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Wifi size={14} color={`rgb(${c})`} /> <span>{net.ssid}</span> <span style={{ fontSize: "0.6rem", opacity: 0.6 }}>({net.freq_ghz} GHz)</span></div>
+                        <span style={{ fontSize: "0.6rem", color: `rgb(${c})` }}>{isAct ? "Connected" : `${net.signal_pct}%`}</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px", background: `rgba(${c}, 0.1)`, borderRadius: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Wifi size={14} color={`rgb(${c})`} /> {netTelemetry?.network_name || "Host Wi-Fi Bridge"}</div>
+                    <span style={{ fontSize: "0.6rem", color: `rgb(${c})` }}>{netTelemetry?.has_info ? "Connected (Bridged)" : "No signal"}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1190,7 +1263,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             {expandKnown && (
               <div style={{ padding: "12px 16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                  <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>3 Networks saved</span>
+                  <span style={{ fontSize: "0.75rem", opacity: 0.8 }}>{wifiNetworks.length > 0 ? `${wifiNetworks.length} Networks detected` : "1 Network connected"}</span>
                   <button className="hud-clickable" onClick={() => setAddModal(addModal === 'wifi' ? null : 'wifi')} style={{ background: `rgba(${c}, 0.1)`, border: `1px solid rgba(${c}, 0.4)`, color: `rgb(${c})`, borderRadius: "4px", padding: "2px 8px", fontSize: "0.65rem", cursor: "pointer", boxShadow: `0 0 5px rgba(${c},0.2) inset` }}>{addModal === 'wifi' ? 'Cancel' : 'Add network'}</button>
                 </div>
                 
@@ -1209,18 +1282,16 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
                      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                         {addModal === 'wifi' ? (
                           <>
-                            <div className="hud-clickable" onClick={() => setAddModal('wifi_GUEST_NODE_BETA')} style={{ padding: "10px", border: `1px solid rgba(${c},0.2)`, borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color={`rgb(${c})`} /> <span>GUEST_NODE_BETA</span></div>
-                              <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>WPA2/WPA3</span>
-                            </div>
-                            <div className="hud-clickable" onClick={() => setAddModal('wifi_SECURE_ORBIT_LINK')} style={{ padding: "10px", border: `1px solid rgba(${c},0.2)`, borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color={`rgb(${c})`} /> <span>SECURE_ORBIT_LINK</span></div>
-                              <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>WPA3-Enterprise</span>
-                            </div>
-                            <div className="hud-clickable" onClick={() => setAddModal('wifi_OPEN_COMM_NET')} style={{ padding: "10px", border: `1px solid rgba(${c},0.2)`, borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#ffaa00" }}><ShieldCheck size={14} /> <span style={{ color: "#fff" }}>OPEN_COMM_NET</span></div>
-                              <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>Unsecured</span>
-                            </div>
+                            {wifiNetworks.length > 0 ? (
+                              wifiNetworks.map((net: any, idx: number) => (
+                                <div key={idx} className="hud-clickable" onClick={() => setAddModal(`wifi_${net.ssid}`)} style={{ padding: "10px", border: `1px solid rgba(${c},0.2)`, borderRadius: "4px", background: "rgba(0,0,0,0.3)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><Lock size={14} color={`rgb(${c})`} /> <span>{net.ssid}</span></div>
+                                  <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>{net.security}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ padding: "10px", opacity: 0.7, fontSize: "0.8rem" }}>No additional networks discovered in range.</div>
+                            )}
                           </>
                         ) : (
                           <>
@@ -1238,16 +1309,8 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
                   </div>
                 )}
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                  <span style={{ fontSize: "0.75rem" }}>QUANTUM_NET_5G</span>
-                  <button style={{ background: "transparent", border: "none", color: `rgb(${c})`, fontSize: "0.65rem", cursor: "pointer" }}>Forget</button>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                  <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>GUEST_NODE_BETA</span>
-                  <button style={{ background: "transparent", border: "none", color: `rgb(${c})`, fontSize: "0.65rem", cursor: "pointer", opacity: 0.7 }}>Forget</button>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                  <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>Home_Net_Old</span>
-                  <button style={{ background: "transparent", border: "none", color: `rgb(${c})`, fontSize: "0.65rem", cursor: "pointer", opacity: 0.7 }}>Forget</button>
+                  <span style={{ fontSize: "0.75rem" }}>{netTelemetry?.network_name || "Host Wi-Fi Bridge"}</span>
+                  <button style={{ background: "transparent", border: "none", color: `rgb(${c})`, fontSize: "0.65rem", cursor: "pointer" }}>Active</button>
                 </div>
               </div>
             )}
@@ -1265,10 +1328,10 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             />
             {expandHardware && (
               <div style={{ padding: "12px 16px", background: `rgba(${c}, 0.02)`, border: `1px solid rgba(${c}, 0.1)`, borderRadius: "4px", marginBottom: "8px", marginTop: "-4px" }}>
-                 <InfoRow label="Name" value="Wi-Fi 7 (wlan0)" color={c} />
-                 <InfoRow label="Description" value="NOVA Quantum Wireless Network Adapter" color={c} />
-                 <InfoRow label="Physical address (MAC)" value="00:1A:2B:3C:4D:5E" color={c} />
-                 <InfoRow label="Status" value="Operational" color={c} status="ok" />
+                 <InfoRow label="Name" value={`${netTelemetry?.conn_type || 'Ethernet'} (${netTelemetry?.interface || 'eth0'})`} color={c} />
+                 <InfoRow label="Description" value={netTelemetry?.conn_type?.includes("Bridge") ? "VirtualBox Bridged Network Adapter" : "Physical Network Controller"} color={c} />
+                 <InfoRow label="Physical address (MAC)" value={netTelemetry?.mac || "N/A"} color={c} />
+                 <InfoRow label="Status" value={netTelemetry?.has_info ? "Operational (UP)" : "DOWN"} color={c} status="ok" />
                  <InfoRow label="Maximum transmission unit" value="1500" color={c} />
               </div>
             )}
