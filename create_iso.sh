@@ -55,7 +55,6 @@ net-tools
 iproute2
 iputils-ping
 wpasupplicant
-wireless-tools
 iw
 xserver-xorg-video-all
 xinit
