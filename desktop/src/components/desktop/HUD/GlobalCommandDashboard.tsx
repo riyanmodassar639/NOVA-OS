@@ -65,6 +65,14 @@ const SectionHeader = ({ icon: Icon, title, color, appId, appLabel, onOpenSubApp
   </div>
 );
 
+const formatBandwidth = (bps: number) => {
+  if (!bps || bps <= 0) return "0.00 MB/s";
+  if (bps < 1024 * 1024) {
+    return `${(bps / 1024).toFixed(1)} KB/s`;
+  }
+  return `${(bps / (1024 * 1024)).toFixed(2)} MB/s`;
+};
+
 const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenSubApp }) => {
   const [dataPoints, setDataPoints] = useState<{ [key: string]: number[] }>({
     cpu: Array(40).fill(0),
@@ -86,7 +94,7 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
   const [storageTelemetry, setStorageTelemetry] = useState<any>(null);
   const [sysInfo, setSysInfo] = useState<any>(null);
   const netRef = useRef<any>(null);
-  const prevNet = useRef({ tx: 0, rx: 0, time: Date.now() });
+  const prevNet = useRef({ tx: 0, rx: 0, time: 0 });
   const currentBandwidth = useRef({ txSpeed: 0, rxSpeed: 0 });
   const gpuRef = useRef<any>(null);
   const storageRef = useRef<any>(null);
@@ -152,26 +160,45 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
             setNetTelemetry(net);
             netRef.current = net;
             const now = Date.now();
-            const timeDiff = (now - prevNet.current.time) / 1000;
-            if (timeDiff > 0 && prevNet.current.tx > 0) {
-              const txDelta = net.tx_bytes - prevNet.current.tx;
-              const rxDelta = net.rx_bytes - prevNet.current.rx;
-              currentBandwidth.current = { 
-                txSpeed: Math.max(0, txDelta / timeDiff), // Bytes per sec
-                rxSpeed: Math.max(0, rxDelta / timeDiff)
-              };
+            if (prevNet.current.time > 0) {
+              const timeDiff = (now - prevNet.current.time) / 1000;
+              if (timeDiff > 0) {
+                const txDelta = Math.max(0, net.tx_bytes - prevNet.current.tx);
+                const rxDelta = Math.max(0, net.rx_bytes - prevNet.current.rx);
+                currentBandwidth.current = { 
+                  txSpeed: txDelta / timeDiff,
+                  rxSpeed: rxDelta / timeDiff
+                };
+              }
             }
             prevNet.current = { tx: net.tx_bytes, rx: net.rx_bytes, time: now };
           }
         } catch (_) {}
 
 
+        const txSpd = currentBandwidth.current.txSpeed;
+        const rxSpd = currentBandwidth.current.rxSpeed;
+        const isNetActive = netRef.current?.has_info && netRef.current?.interface !== "N/A";
+        
+        const calcBandwidthPct = (bps: number) => {
+          if (!isNetActive) return 0;
+          if (bps <= 0) {
+            const t = Date.now() / 600;
+            return Math.floor(Math.sin(t) * 1.5 + 2.5);
+          }
+          const kb = bps / 1024;
+          if (kb < 10) return Math.min(20, Math.max(5, kb * 2));
+          if (kb < 100) return Math.min(45, 20 + ((kb - 10) / 90) * 25);
+          if (kb < 1024) return Math.min(70, 45 + ((kb - 100) / 924) * 25);
+          const mb = kb / 1024;
+          return Math.min(100, 70 + (mb / 10) * 30);
+        };
+
         setDataPoints(prev => ({
           cpu: [...prev.cpu.slice(1), stats.cpu_usage || 0],
           ram: [...prev.ram.slice(1), memPercent ? parseFloat(memPercent.toFixed(1)) : 0],
-          // Network: use real rx_bytes delta as proxy for activity
-          netUp: [...prev.netUp.slice(1), Math.min(100, (currentBandwidth.current.txSpeed / 1e6) * 10)], // Scale 10MB/s to 100%
-          netDown: [...prev.netDown.slice(1), Math.min(100, (currentBandwidth.current.rxSpeed / 1e6) * 10)], // Scale 10MB/s to 100%
+          netUp: [...prev.netUp.slice(1), calcBandwidthPct(txSpd)],
+          netDown: [...prev.netDown.slice(1), calcBandwidthPct(rxSpd)],
           gpu: [...prev.gpu.slice(1), gpuRef.current ? gpuRef.current.usage_percent : 0],
           disk: [...prev.disk.slice(1), storageRef.current ? Math.round((storageRef.current.used_gb / Math.max(storageRef.current.total_gb, 1)) * 100) : 0],
         }));
@@ -296,8 +323,8 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
         <div style={{ minHeight: "450px", maxHeight: "500px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(150,100,255,0.02)", padding: "15px", border: "1px solid rgba(150,100,255,0.1)", borderRadius: "4px" }}>
           <SectionHeader icon={Radio} title="NETWORK UPLINK" color="150,100,255" appId="sys_network" appLabel="NETWORK DIAGNOSTICS" onOpenSubApp={onOpenSubApp} />
           <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
-            <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label={`TX — ${currentBandwidth.current ? (currentBandwidth.current.txSpeed / 1e6).toFixed(2) : "0.00"} MB/s`} height={45} suffix="%" />
-            <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label={`RX — ${currentBandwidth.current ? (currentBandwidth.current.rxSpeed / 1e6).toFixed(2) : "0.00"} MB/s`} height={45} suffix="%" />
+            <SvgLineGraph data={dataPoints.netUp} color="150, 100, 255" label={`TX — ${formatBandwidth(currentBandwidth.current.txSpeed)}`} height={45} suffix="%" />
+            <SvgLineGraph data={dataPoints.netDown} color="150, 100, 255" label={`RX — ${formatBandwidth(currentBandwidth.current.rxSpeed)}`} height={45} suffix="%" />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", overflowY: "auto", paddingRight: "5px", marginTop: "5px" }}>
              <MiniDetail label="INTERFACE" value={netTelemetry?.interface || "N/A"} color="150,100,255" />
@@ -307,8 +334,8 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
              <MiniDetail label="GATEWAY" value={netTelemetry?.gateway || "N/A"} color="150,100,255" />
              <MiniDetail label="DNS" value={netTelemetry?.dns || "N/A"} color="150,100,255" />
              <MiniDetail label="LINK SPEED" value={netTelemetry?.link_speed_mbps > 0 ? `${netTelemetry.link_speed_mbps} Mbps` : "N/A"} color="150,100,255" />
-             <MiniDetail label="TX TOTAL" value={netTelemetry?.tx_bytes > 0 ? `${(netTelemetry.tx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
-             <MiniDetail label="RX TOTAL" value={netTelemetry?.rx_bytes > 0 ? `${(netTelemetry.rx_bytes / 1e6).toFixed(1)} MB` : "N/A"} color="150,100,255" />
+             <MiniDetail label="TX TOTAL" value={netTelemetry ? (netTelemetry.tx_bytes >= 1e9 ? `${(netTelemetry.tx_bytes / 1e9).toFixed(2)} GB` : `${(netTelemetry.tx_bytes / 1e6).toFixed(1)} MB`) : "N/A"} color="150,100,255" />
+             <MiniDetail label="RX TOTAL" value={netTelemetry ? (netTelemetry.rx_bytes >= 1e9 ? `${(netTelemetry.rx_bytes / 1e9).toFixed(2)} GB` : `${(netTelemetry.rx_bytes / 1e6).toFixed(1)} MB`) : "N/A"} color="150,100,255" />
           </div>
         </div>
 

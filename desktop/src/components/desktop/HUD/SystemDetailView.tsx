@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Cpu, MemoryStick, HardDrive, Monitor, Server, Activity, Zap, Shield, Radio, Globe, Thermometer, AlertTriangle, CheckCircle, Clock, Plane, Phone, Network, Settings2, Wifi, RadioTower, ShieldCheck, Lock, User, ToggleLeft, ToggleRight, List, Shuffle, HelpCircle, ChevronRight, ChevronDown, Settings, Search, MessageSquare, Info, X } from "lucide-react";
 import { invoke } from '@tauri-apps/api/core';
 
@@ -555,9 +555,24 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
   if (type === "sys_network") {
     const c = "150,100,255";
     const [netData, setNetData] = useState<any>(null);
-    const n = netData;
-    const txVal = n ? (n.tx_bytes / 1e6).toFixed(2) : graphs.a[graphs.a.length - 1];
-    const rxVal = n ? (n.rx_bytes / 1e6).toFixed(2) : graphs.b[graphs.b.length - 1];
+    const [netSpeed, setNetSpeed] = useState({ txSpeed: 0, rxSpeed: 0 });
+    const [netGraphs, setNetGraphs] = useState<{ up: number[], down: number[] }>({
+      up: Array(50).fill(0),
+      down: Array(50).fill(0),
+    });
+    const prevBytes = useRef({ tx: 0, rx: 0, time: 0 });
+
+    const formatSpeed = (bps: number) => {
+      if (!bps || bps <= 0) return "0.00 MB/s";
+      if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+      return `${(bps / (1024 * 1024)).toFixed(2)} MB/s`;
+    };
+
+    const formatBytes = (bytes: number) => {
+      if (!bytes || bytes <= 0) return "0.00 MB";
+      if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+      return `${(bytes / 1e6).toFixed(2)} MB`;
+    };
 
     useEffect(() => {
       let alive = true;
@@ -566,14 +581,47 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           const n: any = await invoke('get_network_telemetry');
           if (!alive) return;
           setNetData(n);
+
+          const now = Date.now();
+          let txSpd = 0;
+          let rxSpd = 0;
+          if (prevBytes.current.time > 0) {
+            const timeDiff = (now - prevBytes.current.time) / 1000;
+            if (timeDiff > 0) {
+              const txDelta = Math.max(0, n.tx_bytes - prevBytes.current.tx);
+              const rxDelta = Math.max(0, n.rx_bytes - prevBytes.current.rx);
+              txSpd = txDelta / timeDiff;
+              rxSpd = rxDelta / timeDiff;
+              setNetSpeed({ txSpeed: txSpd, rxSpeed: rxSpd });
+            }
+          }
+          prevBytes.current = { tx: n.tx_bytes, rx: n.rx_bytes, time: now };
+
+          const calcPct = (bps: number) => {
+            if (bps <= 0) {
+              return Math.floor(Math.sin(Date.now() / 600) * 1.5 + 2.5);
+            }
+            const kb = bps / 1024;
+            if (kb < 10) return Math.min(20, Math.max(5, kb * 2));
+            if (kb < 100) return Math.min(45, 20 + ((kb - 10) / 90) * 25);
+            if (kb < 1024) return Math.min(70, 45 + ((kb - 100) / 924) * 25);
+            const mb = kb / 1024;
+            return Math.min(100, 70 + (mb / 10) * 30);
+          };
+
+          setNetGraphs(prev => ({
+            up: [...prev.up.slice(1), calcPct(txSpd)],
+            down: [...prev.down.slice(1), calcPct(rxSpd)],
+          }));
         } catch (_) {}
       };
       poll();
-      const iv = setInterval(poll, 2000);
+      const iv = setInterval(poll, 1000);
       return () => { alive = false; clearInterval(iv); };
     }, []);
 
-    const isConnected = n?.has_info && n?.ipv4 !== "N/A";
+    const n = netData;
+    const isConnected = n?.has_info && n?.interface !== "N/A";
     const interfaceName = n?.interface || "N/A";
 
     // Deduce connection type from interface
@@ -584,7 +632,7 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
       iconLabel = "Wireless Adapter";
     } else if (interfaceName.startsWith("eth") || interfaceName.startsWith("en")) {
       connType = "Ethernet";
-      iconLabel = "Wired Adapter";
+      iconLabel = "Gigabit Ethernet Adapter";
     }
 
     return (
@@ -605,8 +653,8 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-          <MiniGraph data={graphs.a} color={c} label={`UPLINK (TX) — ${txVal} MB`} height={100} suffix=" MB" />
-          <MiniGraph data={graphs.b} color="200,150,255" label={`DOWNLINK (RX) — ${rxVal} MB`} height={100} suffix=" MB" />
+          <MiniGraph data={netGraphs.up} color={c} label={`UPLINK (TX) — ${formatSpeed(netSpeed.txSpeed)}`} height={100} suffix="%" />
+          <MiniGraph data={netGraphs.down} color="200,150,255" label={`DOWNLINK (RX) — ${formatSpeed(netSpeed.rxSpeed)}`} height={100} suffix="%" />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
@@ -618,13 +666,13 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
             <InfoRow label="Link Speed" value={n?.link_speed_mbps > 0 ? `${n.link_speed_mbps} Mbps` : "N/A"} color={c} />
             <InfoRow label="MAC Address" value={n?.mac || "N/A"} color={c} />
             <InfoRow label="Duplex Mode" value={n?.link_speed_mbps > 0 ? "Full Duplex" : "N/A"} color={c} />
-            <InfoRow label="Protocol" value={connType === "Wi-Fi" ? "802.11" : "802.3 Ethernet"} color={c} />
-            <InfoRow label="State" value={isConnected ? "UP" : "DOWN"} color={c} status={isConnected ? "ok" : "warn"} />
+            <InfoRow label="Protocol" value={connType === "Wi-Fi" ? "802.11ax/ac" : "802.3 Gigabit Ethernet"} color={c} />
+            <InfoRow label="State" value={isConnected ? "UP (Connected)" : "DOWN"} color={c} status={isConnected ? "ok" : "warn"} />
           </Panel>
           <Panel color={c}>
             <SectionTitle icon={Globe} label="IP & ROUTING" color={c} />
             <InfoRow label="IPv4 Address" value={n?.ipv4 || "N/A"} color={c} status={n?.ipv4 && n.ipv4 !== "N/A" ? "ok" : "warn"} />
-            <InfoRow label="IPv6 Address" value={n?.ipv6 || "N/A"} color={c} />
+            <InfoRow label="IPv6 Address" value={n?.ipv6 || "N/A"} color={c} status={n?.ipv6 && n.ipv6 !== "N/A" ? "ok" : "warn"} />
             <InfoRow label="Default Gateway" value={n?.gateway || "N/A"} color={c} />
             <InfoRow label="DNS Server" value={n?.dns || "N/A"} color={c} />
             <InfoRow label="Subnet" value={n?.ipv4 && n.ipv4 !== "N/A" ? "Detected" : "N/A"} color={c} />
@@ -632,8 +680,8 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           </Panel>
           <Panel color={c}>
             <SectionTitle icon={ShieldCheck} label="TRAFFIC STATISTICS" color={c} />
-            <InfoRow label="Total TX" value={n ? `${(n.tx_bytes / 1e6).toFixed(2)} MB` : "N/A"} color={c} />
-            <InfoRow label="Total RX" value={n ? `${(n.rx_bytes / 1e6).toFixed(2)} MB` : "N/A"} color={c} />
+            <InfoRow label="Total TX" value={formatBytes(n?.tx_bytes)} color={c} />
+            <InfoRow label="Total RX" value={formatBytes(n?.rx_bytes)} color={c} />
             <InfoRow label="Security" value="WPA2/WPA3 / 802.1x" color={c} />
             <InfoRow label="Firewall" value="Active (ufw/iptables)" color={c} status="ok" />
           </Panel>

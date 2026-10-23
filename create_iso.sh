@@ -37,6 +37,10 @@ echo "Installing NOVA OS package..."
 apt-get update
 dpkg -i /opt/nova-os.deb || apt-get install -f -y
 rm /opt/nova-os.deb
+
+# Enable systemd-networkd and systemd-resolved for automatic DHCP & IPv6
+systemctl enable systemd-networkd.service || true
+systemctl enable systemd-resolved.service || true
 EOF
 chmod +x config/hooks/99-install-nova.chroot
 
@@ -46,7 +50,13 @@ echo "Configuring OS packages..."
 mkdir -p config/package-lists
 cat <<EOF > config/package-lists/nova.list.chroot
 xserver-xorg
-network-manager
+isc-dhcp-client
+net-tools
+iproute2
+iputils-ping
+wpasupplicant
+wireless-tools
+iw
 xserver-xorg-video-all
 xinit
 matchbox-window-manager
@@ -82,11 +92,60 @@ if [ -z "\$DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
 fi
 EOF
 
+# Configure network interfaces for automatic DHCPv4 and SLAAC/DHCPv6
+echo "Configuring automatic networking (systemd-networkd & netplan)..."
+mkdir -p config/includes.chroot/etc/systemd/network
+cat <<EOF > config/includes.chroot/etc/systemd/network/99-default.network
+[Match]
+Name=en* eth* wl* *
+
+[Network]
+DHCP=yes
+IPv6AcceptRA=yes
+LinkLocalAddressing=ipv6
+
+[DHCPv4]
+RouteMetric=100
+
+[DHCPv6]
+RouteMetric=100
+EOF
+
+mkdir -p config/includes.chroot/etc/netplan
+cat <<EOF > config/includes.chroot/etc/netplan/01-netcfg.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    all-eth:
+      match:
+        name: "e*"
+      dhcp4: true
+      dhcp6: true
+      optional: true
+  wifis:
+    all-wifi:
+      match:
+        name: "w*"
+      dhcp4: true
+      dhcp6: true
+      optional: true
+EOF
+
 cat <<EOF > config/includes.chroot/root/.xinitrc
 # Force fullscreen using matchbox window manager
 matchbox-window-manager -use_titlebar no -use_cursor yes &
 export WEBKIT_DISABLE_SANDBOX=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+# Initialize network: Bring up interfaces and launch DHCP in background
+for iface in \$(ls /sys/class/net 2>/dev/null | grep -v lo); do
+    ip link set "\$iface" up 2>/dev/null || true
+done
+systemctl restart systemd-networkd 2>/dev/null || true
+dhclient -4 -v 2>/dev/null &
+dhclient -6 -v 2>/dev/null &
+
 exec app
 EOF
 

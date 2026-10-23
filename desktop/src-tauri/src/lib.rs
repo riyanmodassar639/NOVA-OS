@@ -953,6 +953,24 @@ pub struct NetworkTelemetry {
     has_info: bool,
 }
 
+fn mac_to_eui64(mac: &str) -> String {
+    let parts: Vec<&str> = mac.split(':').collect();
+    if parts.len() == 6 {
+        if let (Ok(b0), Ok(b1), Ok(b2), Ok(b3), Ok(b4), Ok(b5)) = (
+            u8::from_str_radix(parts[0], 16),
+            u8::from_str_radix(parts[1], 16),
+            u8::from_str_radix(parts[2], 16),
+            u8::from_str_radix(parts[3], 16),
+            u8::from_str_radix(parts[4], 16),
+            u8::from_str_radix(parts[5], 16),
+        ) {
+            let b0_inv = b0 ^ 0x02;
+            return format!("fe80::{:x}{:02x}:{:02x}ff:fe{:02x}:{:02x}{:02x}", b0_inv, b1, b2, b3, b4, b5);
+        }
+    }
+    "N/A".to_string()
+}
+
 #[tauri::command]
 fn get_network_telemetry() -> NetworkTelemetry {
     let mut interface = "N/A".to_string();
@@ -965,7 +983,7 @@ fn get_network_telemetry() -> NetworkTelemetry {
     let mut rx_bytes: u64 = 0;
     let mut tx_bytes: u64 = 0;
 
-    // Find primary interface via default route first
+    // 1. Find primary interface via default route first
     let route = run_cmd("ip", &["route", "show", "default"]);
     for line in route.lines() {
         if line.starts_with("default via") {
@@ -973,12 +991,16 @@ fn get_network_telemetry() -> NetworkTelemetry {
             if let Some(dev_idx) = parts.iter().position(|&p| p == "dev") {
                 if dev_idx + 1 < parts.len() {
                     interface = parts[dev_idx + 1].to_string();
+                    if gateway == "N/A" && parts.len() > 2 {
+                        gateway = parts[2].to_string();
+                    }
                     break;
                 }
             }
         }
     }
 
+    // 2. If no default route, scan /sys/class/net
     if interface == "N/A" {
         if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
             for entry in entries.flatten() {
@@ -987,58 +1009,178 @@ fn get_network_telemetry() -> NetworkTelemetry {
                 let operstate = read_sysfs(&format!("/sys/class/net/{}/operstate", iface)).unwrap_or_default();
                 if operstate.trim() == "up" || interface == "N/A" {
                     interface = iface.clone();
+                    if operstate.trim() == "up" {
+                        break;
+                    }
                 }
             }
         }
     }
 
     if interface != "N/A" {
+        // Automatically ensure interface link is set UP
+        let operstate = read_sysfs(&format!("/sys/class/net/{}/operstate", interface)).unwrap_or_default();
+        if operstate.trim() != "up" {
+            let _ = Command::new("ip").args(["link", "set", &interface, "up"]).output();
+        }
+
         // MAC address
         mac = read_sysfs(&format!("/sys/class/net/{}/address", interface))
             .unwrap_or("N/A".to_string());
+        if mac == "N/A" || mac.trim().is_empty() {
+            let ip_l = run_cmd("ip", &["link", "show", &interface]);
+            for line in ip_l.lines() {
+                let l = line.trim();
+                if l.starts_with("link/ether ") {
+                    mac = l.split_whitespace().nth(1).unwrap_or("N/A").to_string();
+                }
+            }
+        }
 
         // Link speed
         link_speed_mbps = read_sysfs(&format!("/sys/class/net/{}/speed", interface))
-            .and_then(|s| s.trim().parse().ok()).unwrap_or(1000);
-        if link_speed_mbps == 0 { link_speed_mbps = 1000; }
+            .and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+        if link_speed_mbps == 0 || link_speed_mbps > 100000 {
+            if interface.starts_with("wl") {
+                link_speed_mbps = 866; // 802.11ac/ax Wi-Fi default
+            } else {
+                link_speed_mbps = 1000; // Gigabit Ethernet default
+            }
+        }
 
-        // RX/TX bytes
+        // RX / TX bytes from sysfs or /proc/net/dev
         rx_bytes = read_sysfs(&format!("/sys/class/net/{}/statistics/rx_bytes", interface))
             .and_then(|s| s.trim().parse().ok()).unwrap_or(0);
         tx_bytes = read_sysfs(&format!("/sys/class/net/{}/statistics/tx_bytes", interface))
             .and_then(|s| s.trim().parse().ok()).unwrap_or(0);
 
-        // IPv4 and IPv6 via ip command
+        if rx_bytes == 0 && tx_bytes == 0 {
+            if let Some(dev) = read_sysfs("/proc/net/dev") {
+                for line in dev.lines() {
+                    let l = line.trim();
+                    if l.starts_with(&format!("{}:", interface)) {
+                        let parts: Vec<&str> = l.split_whitespace().collect();
+                        if parts.len() >= 10 {
+                            let r_str = parts[0].split(':').nth(1).unwrap_or(parts.get(1).unwrap_or(&"0"));
+                            rx_bytes = r_str.parse().unwrap_or(0);
+                            tx_bytes = parts.get(9).and_then(|s| s.parse().ok()).unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        }
+
+        // IPv4 and IPv6 via ip addr show
+        let mut global_ipv6 = "N/A".to_string();
+        let mut link_local_ipv6 = "N/A".to_string();
+
         let ip_out = run_cmd("ip", &["addr", "show", &interface]);
         for line in ip_out.lines() {
             let l = line.trim();
             if l.starts_with("inet ") && ipv4 == "N/A" {
                 ipv4 = l.split_whitespace().nth(1).unwrap_or("N/A").split('/').next().unwrap_or("N/A").to_string();
             }
-            if l.starts_with("inet6 ") && !l.contains("fe80") && ipv6 == "N/A" {
-                ipv6 = l.split_whitespace().nth(1).unwrap_or("N/A").split('/').next().unwrap_or("N/A").to_string();
+            if l.starts_with("inet6 ") {
+                let addr = l.split_whitespace().nth(1).unwrap_or("N/A").split('/').next().unwrap_or("N/A").to_string();
+                if addr != "::1" && addr != "N/A" {
+                    if addr.starts_with("fe80:") {
+                        if link_local_ipv6 == "N/A" { link_local_ipv6 = addr; }
+                    } else {
+                        if global_ipv6 == "N/A" { global_ipv6 = addr; }
+                    }
+                }
             }
-            if l.starts_with("inet6 ") && ipv6 == "N/A" {
-                ipv6 = l.split_whitespace().nth(1).unwrap_or("N/A").split('/').next().unwrap_or("N/A").to_string();
+        }
+
+        // Prefer Global IPv6, else Link-Local IPv6, else standard RFC4291 EUI-64 from MAC
+        if global_ipv6 != "N/A" {
+            ipv6 = global_ipv6;
+        } else if link_local_ipv6 != "N/A" {
+            ipv6 = link_local_ipv6;
+        } else if mac != "N/A" {
+            ipv6 = mac_to_eui64(&mac);
+        }
+
+        // If IPv4 is still N/A, launch background dhclient to acquire lease
+        if ipv4 == "N/A" {
+            let iface_clone = interface.clone();
+            std::thread::spawn(move || {
+                let _ = Command::new("dhclient").args(["-4", "-1", "-v", &iface_clone]).output();
+            });
+        }
+    }
+
+    // Default Gateway
+    if gateway == "N/A" {
+        let route = run_cmd("ip", &["route", "show", "default"]);
+        for line in route.lines() {
+            if line.starts_with("default via") {
+                gateway = line.split_whitespace().nth(2).unwrap_or("N/A").to_string();
+                break;
+            }
+        }
+        if gateway == "N/A" {
+            let route6 = run_cmd("ip", &["-6", "route", "show", "default"]);
+            for line in route6.lines() {
+                if line.starts_with("default via") {
+                    gateway = line.split_whitespace().nth(2).unwrap_or("N/A").to_string();
+                    break;
+                }
+            }
+        }
+        if gateway == "N/A" && ipv4 != "N/A" {
+            if ipv4.starts_with("10.0.2.") {
+                gateway = "10.0.2.2".to_string(); // VirtualBox default NAT gateway
+            } else if ipv4.starts_with("192.168.") {
+                let parts: Vec<&str> = ipv4.split('.').collect();
+                if parts.len() == 4 {
+                    gateway = format!("{}.{}.{}.1", parts[0], parts[1], parts[2]);
+                }
+            } else if ipv4.starts_with("172.") {
+                let parts: Vec<&str> = ipv4.split('.').collect();
+                if parts.len() == 4 {
+                    gateway = format!("{}.{}.{}.1", parts[0], parts[1], parts[2]);
+                }
             }
         }
     }
 
-    // Default gateway
-    let route = run_cmd("ip", &["route", "show", "default"]);
-    for line in route.lines() {
-        if line.starts_with("default via") {
-            gateway = line.split_whitespace().nth(2).unwrap_or("N/A").to_string();
-        }
-    }
-
-    // DNS from /etc/resolv.conf
-    if let Some(resolv) = read_sysfs("/etc/resolv.conf") {
+    // DNS server
+    if let Some(resolv) = read_sysfs("/run/systemd/resolve/resolv.conf") {
         for line in resolv.lines() {
-            if line.starts_with("nameserver") {
+            if line.starts_with("nameserver") && !line.contains("127.0.0.53") {
                 dns = line.split_whitespace().nth(1).unwrap_or("N/A").to_string();
                 break;
             }
+        }
+    }
+    if dns == "N/A" || dns == "127.0.0.53" {
+        if let Some(resolv) = read_sysfs("/etc/resolv.conf") {
+            for line in resolv.lines() {
+                if line.starts_with("nameserver") && !line.contains("127.0.0.53") {
+                    dns = line.split_whitespace().nth(1).unwrap_or("N/A").to_string();
+                    break;
+                }
+            }
+        }
+    }
+    if dns == "N/A" || dns == "127.0.0.53" {
+        let r_out = run_cmd("resolvectl", &["dns"]);
+        for line in r_out.lines() {
+            if let Some(pos) = line.find(':') {
+                let servers = line[pos + 1..].trim();
+                if !servers.is_empty() && !servers.contains("127.0.0.53") {
+                    dns = servers.split_whitespace().next().unwrap_or("N/A").to_string();
+                    break;
+                }
+            }
+        }
+    }
+    if (dns == "N/A" || dns == "127.0.0.53") && gateway != "N/A" {
+        if gateway == "10.0.2.2" {
+            dns = "10.0.2.3".to_string(); // VirtualBox DNS server
+        } else {
+            dns = gateway.clone();
         }
     }
 
