@@ -72,6 +72,7 @@ struct SysState {
     cached_dimm: Mutex<Option<(String, String, u32, u32, u32, String, String, Vec<SlotInfo>, String, bool, bool)>>,
     cached_lscpu: Mutex<Option<HashMap<String, String>>>,
     running_tasks: Mutex<Vec<AppTaskInfo>>,
+    last_net_bytes: Mutex<(u64, u64, std::time::Instant)>,
 }
 
 
@@ -1049,6 +1050,8 @@ pub struct NetworkTelemetry {
     link_speed_mbps: u64,
     rx_bytes: u64,
     tx_bytes: u64,
+    rx_bytes_sec: f32,
+    tx_bytes_sec: f32,
     has_info: bool,
 }
 
@@ -1080,7 +1083,7 @@ fn mac_to_eui64(mac: &str) -> String {
 }
 
 #[tauri::command]
-fn get_network_telemetry() -> NetworkTelemetry {
+fn get_network_telemetry(state: tauri::State<SysState>) -> NetworkTelemetry {
     let mut interface = "N/A".to_string();
     let mut ipv4 = "N/A".to_string();
     let mut ipv6 = "N/A".to_string();
@@ -1346,11 +1349,97 @@ fn get_network_telemetry() -> NetworkTelemetry {
         }
     }
 
+    // Read Link Speed
+    if let Some(spd_str) = read_sysfs(&format!("/sys/class/net/{}/speed", interface)) {
+        if let Ok(spd) = spd_str.trim().parse::<i64>() {
+            if spd > 0 {
+                link_speed_mbps = spd as u64;
+            }
+        }
+    }
+    if link_speed_mbps == 0 {
+        link_speed_mbps = 1000;
+    }
+
+    // Direct sysfs statistics
+    if let Some(rx_str) = read_sysfs(&format!("/sys/class/net/{}/statistics/rx_bytes", interface)) {
+        rx_bytes = rx_str.trim().parse::<u64>().unwrap_or(0);
+    }
+    if let Some(tx_str) = read_sysfs(&format!("/sys/class/net/{}/statistics/tx_bytes", interface)) {
+        tx_bytes = tx_str.trim().parse::<u64>().unwrap_or(0);
+    }
+
+    // Fallback or multi-interface aggregation via /proc/net/dev
+    if rx_bytes == 0 && tx_bytes == 0 {
+        if let Ok(dev_content) = std::fs::read_to_string("/proc/net/dev") {
+            let mut total_rx = 0u64;
+            let mut total_tx = 0u64;
+            for line in dev_content.lines().skip(2) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.is_empty() { continue; }
+                let if_name = parts[0].trim_end_matches(':');
+                if if_name == "lo" { continue; }
+
+                let (if_rx, if_tx) = if parts[0].ends_with(':') {
+                    let rx = parts.get(1).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+                    let tx = parts.get(9).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+                    (rx, tx)
+                } else if let Some(colon_pos) = parts[0].find(':') {
+                    let rx = parts[0][colon_pos + 1..].parse::<u64>().ok().unwrap_or(0);
+                    let tx = parts.get(8).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+                    (rx, tx)
+                } else {
+                    (0, 0)
+                };
+
+                if if_name == interface {
+                    rx_bytes = if_rx;
+                    tx_bytes = if_tx;
+                    break;
+                }
+                total_rx += if_rx;
+                total_tx += if_tx;
+            }
+            if rx_bytes == 0 && total_rx > 0 { rx_bytes = total_rx; }
+            if tx_bytes == 0 && total_tx > 0 { tx_bytes = total_tx; }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if rx_bytes == 0 && tx_bytes == 0 {
+            let networks = sysinfo::Networks::new_with_refreshed_list();
+            for (_name, net) in &networks {
+                rx_bytes += net.total_received();
+                tx_bytes += net.total_transmitted();
+            }
+        }
+    }
+
+    // Compute real-time rates (bytes/sec)
+    let now = std::time::Instant::now();
+    let mut rx_bytes_sec = 0.0f32;
+    let mut tx_bytes_sec = 0.0f32;
+
+    if let Ok(mut net_lock) = state.last_net_bytes.lock() {
+        let (prev_rx, prev_tx, prev_time) = *net_lock;
+        let elapsed = now.duration_since(prev_time).as_secs_f32();
+        if elapsed > 0.05 && (prev_rx > 0 || prev_tx > 0) {
+            if rx_bytes >= prev_rx {
+                rx_bytes_sec = (rx_bytes - prev_rx) as f32 / elapsed;
+            }
+            if tx_bytes >= prev_tx {
+                tx_bytes_sec = (tx_bytes - prev_tx) as f32 / elapsed;
+            }
+        }
+        *net_lock = (rx_bytes, tx_bytes, now);
+    }
+
     let has_info = interface != "N/A";
     NetworkTelemetry { 
         interface, conn_type, network_name, signal_strength,
         ipv4, ipv6, mac, gateway, dns,
-        link_speed_mbps, rx_bytes, tx_bytes, has_info 
+        link_speed_mbps, rx_bytes, tx_bytes, rx_bytes_sec, tx_bytes_sec, has_info 
     }
 }
 
@@ -1702,6 +1791,7 @@ pub fn run() {
             cached_dimm: Mutex::new(None),
             cached_lscpu: Mutex::new(None),
             running_tasks: Mutex::new(Vec::new()),
+            last_net_bytes: Mutex::new((0u64, 0u64, std::time::Instant::now())),
         })
         .invoke_handler(tauri::generate_handler![
             get_system_stats,

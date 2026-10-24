@@ -606,30 +606,30 @@ const SystemDetailView: React.FC<SystemDetailViewProps> = ({ type }) => {
           setNetData(n);
 
           const now = Date.now();
-          let txSpd = 0;
-          let rxSpd = 0;
-          if (prevBytes.current.time > 0) {
+          let txSpd = n.tx_bytes_sec != null && n.tx_bytes_sec > 0 ? n.tx_bytes_sec : 0;
+          let rxSpd = n.rx_bytes_sec != null && n.rx_bytes_sec > 0 ? n.rx_bytes_sec : 0;
+          if (prevBytes.current.time > 0 && (txSpd === 0 || rxSpd === 0)) {
             const timeDiff = (now - prevBytes.current.time) / 1000;
             if (timeDiff > 0) {
               const txDelta = Math.max(0, n.tx_bytes - prevBytes.current.tx);
               const rxDelta = Math.max(0, n.rx_bytes - prevBytes.current.rx);
-              txSpd = txDelta / timeDiff;
-              rxSpd = rxDelta / timeDiff;
-              setNetSpeed({ txSpeed: txSpd, rxSpeed: rxSpd });
+              if (txSpd === 0) txSpd = txDelta / timeDiff;
+              if (rxSpd === 0) rxSpd = rxDelta / timeDiff;
             }
           }
+          setNetSpeed({ txSpeed: txSpd, rxSpeed: rxSpd });
           prevBytes.current = { tx: n.tx_bytes, rx: n.rx_bytes, time: now };
 
           const calcPct = (bps: number) => {
             if (bps <= 0) {
               return Math.floor(Math.sin(Date.now() / 600) * 1.5 + 2.5);
             }
+            if (bps < 1024) return Math.min(20, Math.max(6, Math.round(bps / 50)));
             const kb = bps / 1024;
-            if (kb < 10) return Math.min(20, Math.max(5, kb * 2));
-            if (kb < 100) return Math.min(45, 20 + ((kb - 10) / 90) * 25);
-            if (kb < 1024) return Math.min(70, 45 + ((kb - 100) / 924) * 25);
+            if (kb < 100) return Math.min(50, 20 + ((kb - 1) / 99) * 30);
+            if (kb < 1024) return Math.min(75, 50 + ((kb - 100) / 924) * 25);
             const mb = kb / 1024;
-            return Math.min(100, 70 + (mb / 10) * 30);
+            return Math.min(100, 75 + (mb / 10) * 25);
           };
 
           setNetGraphs(prev => ({

@@ -167,21 +167,21 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
             setNetTelemetry(net);
             netRef.current = net;
             const now = Date.now();
-            if (prevNet.current.time > 0) {
+            let txSpd = net.tx_bytes_sec != null && net.tx_bytes_sec > 0 ? net.tx_bytes_sec : 0;
+            let rxSpd = net.rx_bytes_sec != null && net.rx_bytes_sec > 0 ? net.rx_bytes_sec : 0;
+            if (prevNet.current.time > 0 && (txSpd === 0 || rxSpd === 0)) {
               const timeDiff = (now - prevNet.current.time) / 1000;
               if (timeDiff > 0) {
                 const txDelta = Math.max(0, net.tx_bytes - prevNet.current.tx);
                 const rxDelta = Math.max(0, net.rx_bytes - prevNet.current.rx);
-                currentBandwidth.current = { 
-                  txSpeed: txDelta / timeDiff,
-                  rxSpeed: rxDelta / timeDiff
-                };
+                if (txSpd === 0) txSpd = txDelta / timeDiff;
+                if (rxSpd === 0) rxSpd = rxDelta / timeDiff;
               }
             }
+            currentBandwidth.current = { txSpeed: txSpd, rxSpeed: rxSpd };
             prevNet.current = { tx: net.tx_bytes, rx: net.rx_bytes, time: now };
           }
         } catch (_) {}
-
 
         const txSpd = currentBandwidth.current.txSpeed;
         const rxSpd = currentBandwidth.current.rxSpeed;
@@ -193,12 +193,12 @@ const GlobalCommandDashboard: React.FC<GlobalCommandDashboardProps> = ({ onOpenS
             const t = Date.now() / 600;
             return Math.floor(Math.sin(t) * 1.5 + 2.5);
           }
+          if (bps < 1024) return Math.min(20, Math.max(6, Math.round(bps / 50)));
           const kb = bps / 1024;
-          if (kb < 10) return Math.min(20, Math.max(5, kb * 2));
-          if (kb < 100) return Math.min(45, 20 + ((kb - 10) / 90) * 25);
-          if (kb < 1024) return Math.min(70, 45 + ((kb - 100) / 924) * 25);
+          if (kb < 100) return Math.min(50, 20 + ((kb - 1) / 99) * 30);
+          if (kb < 1024) return Math.min(75, 50 + ((kb - 100) / 924) * 25);
           const mb = kb / 1024;
-          return Math.min(100, 70 + (mb / 10) * 30);
+          return Math.min(100, 75 + (mb / 10) * 25);
         };
 
         setDataPoints(prev => ({
