@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::process::Command;
 use sysinfo::{System, Components};
 use std::sync::Mutex;
@@ -53,6 +53,16 @@ pub struct CpuTelemetry {
     thread_count: u32,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AppTaskInfo {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub opened_at: u64,
+    pub last_active: u64,
+    pub details: String,
+}
+
 struct SysState {
     sys: Mutex<System>,
     // Store last energy reading for delta calculation
@@ -61,6 +71,7 @@ struct SysState {
     // Cache slow hardware info
     cached_dimm: Mutex<Option<(String, String, u32, u32, u32, String, String, Vec<SlotInfo>, String, bool, bool)>>,
     cached_lscpu: Mutex<Option<HashMap<String, String>>>,
+    running_tasks: Mutex<Vec<AppTaskInfo>>,
 }
 
 
@@ -444,6 +455,58 @@ fn run_terminal_command(cmd: &str) -> Result<String, String> {
         },
         Err(e) => Err(format!("Command failed to execute: {}", e)),
     }
+}
+
+#[tauri::command]
+fn sync_app_tasks(tasks: Vec<AppTaskInfo>, state: tauri::State<SysState>) -> Result<Vec<AppTaskInfo>, String> {
+    let mut lock = state.running_tasks.lock().map_err(|e| e.to_string())?;
+    *lock = tasks.clone();
+
+    let path = if cfg!(target_os = "windows") {
+        std::env::temp_dir().join("nova_tasks.json")
+    } else {
+        std::path::PathBuf::from("/tmp/nova_tasks.json")
+    };
+    if let Ok(data) = serde_json::to_string_pretty(&tasks) {
+        let _ = std::fs::write(path, data);
+    }
+
+    Ok(tasks)
+}
+
+#[tauri::command]
+fn get_app_tasks(state: tauri::State<SysState>) -> Vec<AppTaskInfo> {
+    if let Ok(lock) = state.running_tasks.lock() {
+        if !lock.is_empty() {
+            return lock.clone();
+        }
+    }
+    let path = if cfg!(target_os = "windows") {
+        std::env::temp_dir().join("nova_tasks.json")
+    } else {
+        std::path::PathBuf::from("/tmp/nova_tasks.json")
+    };
+    if let Ok(content) = std::fs::read_to_string(path) {
+        if let Ok(tasks) = serde_json::from_str::<Vec<AppTaskInfo>>(&content) {
+            return tasks;
+        }
+    }
+    Vec::new()
+}
+
+#[tauri::command]
+fn terminate_app_task(task_id: String, state: tauri::State<SysState>) -> Result<(), String> {
+    let mut lock = state.running_tasks.lock().map_err(|e| e.to_string())?;
+    lock.retain(|t| t.id != task_id);
+    let path = if cfg!(target_os = "windows") {
+        std::env::temp_dir().join("nova_tasks.json")
+    } else {
+        std::path::PathBuf::from("/tmp/nova_tasks.json")
+    };
+    if let Ok(data) = serde_json::to_string_pretty(&*lock) {
+        let _ = std::fs::write(path, data);
+    }
+    Ok(())
 }
 
 // ─── Memory Telemetry ───────────────────────────────────────────────────────
@@ -1638,6 +1701,7 @@ pub fn run() {
             last_energy_time: Mutex::new(std::time::Instant::now()),
             cached_dimm: Mutex::new(None),
             cached_lscpu: Mutex::new(None),
+            running_tasks: Mutex::new(Vec::new()),
         })
         .invoke_handler(tauri::generate_handler![
             get_system_stats,
@@ -1655,6 +1719,9 @@ pub fn run() {
             launch_external_app,
             execute_system_command,
             run_terminal_command,
+            sync_app_tasks,
+            get_app_tasks,
+            terminate_app_task,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

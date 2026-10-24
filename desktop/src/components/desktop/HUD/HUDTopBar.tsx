@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { 
   Wifi, Bluetooth, Battery, Clock, Calendar, 
-  Activity, Zap, Cloud, Volume2, Search, ChevronDown, Hexagon, LayoutGrid 
+  Activity, Zap, Cloud, Volume2, Search, ChevronDown, Hexagon, LayoutGrid, Layers 
 } from "lucide-react";
 import "../../../styles/nova-hud.css";
 
@@ -9,9 +9,17 @@ interface HUDTopBarProps {
   onLaunchApps: () => void;
   onStartClick: () => void;
   onTrayClick: (type: 'wifi' | 'bluetooth' | 'volume' | 'arrow') => void;
+  onToggleTaskSwitcher?: () => void;
+  runningTasksCount?: number;
 }
 
-const HUDTopBar: React.FC<HUDTopBarProps> = ({ onLaunchApps, onStartClick, onTrayClick }) => {
+const HUDTopBar: React.FC<HUDTopBarProps> = ({ 
+  onLaunchApps, 
+  onStartClick, 
+  onTrayClick, 
+  onToggleTaskSwitcher, 
+  runningTasksCount = 0 
+}) => {
   const [time, setTime] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -114,9 +122,50 @@ const HUDTopBar: React.FC<HUDTopBarProps> = ({ onLaunchApps, onStartClick, onTra
             color: "#00ffff"
           }}
           onClick={onLaunchApps}
+          title="App Drawer"
         >
           <LayoutGrid size={18} />
         </div>
+
+        {/* Task Matrix / Multitasking Overview Button */}
+        {onToggleTaskSwitcher && (
+          <div 
+            className="hud-clickable"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 8px",
+              height: "100%",
+              color: "#00e5ff",
+              position: "relative"
+            }}
+            onClick={onToggleTaskSwitcher}
+            title="Task Matrix / Mission Control (Double Right-Click Desktop)"
+          >
+            <Layers size={17} />
+            {runningTasksCount > 0 && (
+              <span style={{
+                position: "absolute",
+                top: "6px",
+                right: "2px",
+                background: "#00ff88",
+                color: "#000",
+                fontSize: "0.55rem",
+                fontWeight: "bold",
+                borderRadius: "50%",
+                width: "14px",
+                height: "14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 0 6px #00ff88"
+              }}>
+                {runningTasksCount}
+              </span>
+            )}
+          </div>
+        )}
 
         <div style={{ width: "1px", height: "16px", background: "rgba(0,255,255,0.2)", margin: "0 4px" }} />
 

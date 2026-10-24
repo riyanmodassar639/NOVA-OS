@@ -14,15 +14,30 @@ interface FloatingAppWindowProps {
   index?: number;
   totalSubApps?: number;
   isActive?: boolean;
+  isMinimized?: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
   onOpenSubApp?: (id: string, label: string) => void;
   onFocus?: () => void;
 }
 
-const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, position = "center", customPos, index = 0, totalSubApps = 1, isActive = false, onClose, onOpenSubApp, onFocus }) => {
+const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ 
+  appId, 
+  appLabel, 
+  position = "center", 
+  customPos, 
+  index = 0, 
+  totalSubApps = 1, 
+  isActive = false, 
+  isMinimized = false,
+  onClose, 
+  onMinimize,
+  onOpenSubApp, 
+  onFocus 
+}) => {
   const [isRendered, setIsRendered] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isRollup, setIsRollup] = useState(false);
   
   // Drag State
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -39,7 +54,7 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
       setIsRendered(false);
       setDragOffset({ x: 0, y: 0 });
       setIsMaximized(false);
-      setIsMinimized(false);
+      setIsRollup(false);
     }
   }, [appId]);
 
@@ -84,11 +99,11 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
   let brightness = 1;
 
   let winWidth = "900px";
-  let winHeight = isMinimized ? "40px" : "550px";
+  let winHeight = isRollup ? "40px" : "550px";
 
   if (isMaximized) {
     winWidth = "100vw";
-    winHeight = isMinimized ? "40px" : "100vh";
+    winHeight = isRollup ? "40px" : "100vh";
     leftPos = "50%";
     topPos = "50%";
     transformStr = `translate(-50%, -50%)`;
@@ -138,11 +153,23 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
   // Adjust blur background: only show if centered (main window)
   const showBackdrop = position === "center";
 
+  if (isMinimized) {
+    return (
+      <div style={{ display: "none" }} aria-hidden="true">
+        {appId === "settings" && <SettingsApp onOpenSubApp={onOpenSubApp} />}
+        {(appId?.startsWith("sys_") || appId?.startsWith("net_")) && appId !== "sys_command" && <SystemDetailView type={appId} />}
+        {appId === "sys_command" && <GlobalCommandDashboard onOpenSubApp={onOpenSubApp} />}
+        {appId === "security" && <SecurityProtocolApp />}
+        {appId === "terminal" && <TerminalApp />}
+      </div>
+    );
+  }
+
   return (
     <>
       {showBackdrop && (
         <div 
-          onClick={onClose}
+          onClick={onMinimize ? onMinimize : onClose}
           style={{
             position: "fixed", inset: 0, zIndex: 1000, 
             background: "rgba(0,5,10,0.6)", backdropFilter: "blur(4px)"
@@ -196,7 +223,14 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
               size={16} 
               className="hud-clickable" 
               style={{ opacity: 0.7, cursor: "pointer" }} 
-              onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (onMinimize) {
+                  onMinimize();
+                } else {
+                  setIsRollup(!isRollup);
+                }
+              }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
               onMouseLeave={(e) => e.currentTarget.style.opacity = "0.7"}
             />
@@ -231,7 +265,7 @@ const FloatingAppWindow: React.FC<FloatingAppWindowProps> = ({ appId, appLabel, 
         </div>
 
         {/* Window Body */}
-        {!isMinimized && (
+        {!isRollup && (
           <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
             
             {appId === "settings" && <SettingsApp onOpenSubApp={onOpenSubApp} />}

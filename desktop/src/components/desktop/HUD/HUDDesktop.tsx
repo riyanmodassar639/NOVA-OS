@@ -1,19 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "../../../styles/nova-hud.css";
 import HUDBackground from "./HUDBackground";
 import HUDCenter from "./HUDCenter";
-import HUDLeftPanel from "./HUDLeftPanel";
-import HUDRightPanel from "./HUDRightPanel";
 import DataStream from "./DataStream";
 import AppDrawer from "./AppDrawer";
-
 import HUDTopBar from "./HUDTopBar";
 import StartMenu from "./StartMenu";
 import FloatingAppWindow from "./FloatingAppWindow";
 import SystemTrayPanel from "./SystemTrayPanel";
+import TaskSwitcherModal, { ManagedApp } from "./TaskSwitcherModal";
 
 const HUDDesktop: React.FC = () => {
-  const [activeAppId, setActiveAppId] = useState<string>("terminal");
   const [visible, setVisible] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isStartMenuOpen, setIsStartMenuOpen] = useState(false);
@@ -22,10 +19,13 @@ const HUDDesktop: React.FC = () => {
   const [isTrayOpen, setIsTrayOpen] = useState(false);
   const [trayType, setTrayType] = useState<'wifi' | 'bluetooth' | 'volume' | 'arrow' | null>(null);
   
-  // Floating App State
-  const [floatingApp, setFloatingApp] = useState<{ id: string, label: string } | null>(null);
-  const [subApps, setSubApps] = useState<{ id: string, label: string, pos: { x: string, y: string } }[]>([]);
+  // Multitasking & Managed Apps State
+  const [managedApps, setManagedApps] = useState<ManagedApp[]>([]);
   const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
+  const [isTaskSwitcherOpen, setIsTaskSwitcherOpen] = useState(false);
+
+  // Double Right-Click Detection
+  const lastRightClickTime = useRef<number>(0);
 
   useEffect(() => {
     // Cinematic fade in
@@ -33,8 +33,52 @@ const HUDDesktop: React.FC = () => {
     return () => clearTimeout(t);
   }, []);
 
+  // Global ContextMenu Listener for Double Right-Click
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Allow context menu inside input fields or textareas (for copy/paste)
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+      e.preventDefault(); // Suppress generic browser right-click menu
+      
+      const now = Date.now();
+      if (now - lastRightClickTime.current < 450) {
+        // Double right-click detected!
+        setIsTaskSwitcherOpen(prev => !prev);
+        lastRightClickTime.current = 0;
+      } else {
+        lastRightClickTime.current = now;
+      }
+    };
+
+    window.addEventListener("contextmenu", handleContextMenu);
+    return () => window.removeEventListener("contextmenu", handleContextMenu);
+  }, []);
+
+  // Sync running apps to Rust backend
+  useEffect(() => {
+    const syncBackend = async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const tasksPayload = managedApps.map(a => ({
+          id: a.id,
+          label: a.label,
+          status: a.isMinimized ? "background" : "active",
+          opened_at: a.lastActive,
+          last_active: a.lastActive,
+          details: a.id === "terminal" ? "Kernel Bash Shell" : "Hardware Telemetry & Subsystems",
+        }));
+        await invoke('sync_app_tasks', { tasks: tasksPayload });
+      } catch (err) {
+        // Fallback or dev mode
+      }
+    };
+    syncBackend();
+  }, [managedApps]);
+
   const handleReboot = () => {
-    // A simple page reload simulates a reboot back to the boot sequence
     window.location.reload();
   };
 
@@ -50,56 +94,115 @@ const HUDDesktop: React.FC = () => {
         console.error(`Failed to launch external app ${id}:`, err);
       }
     } else {
-      setSubApps([]);
-      setFloatingApp({ id, label }); // Open floating window
+      // Internal App - Multitasking Window Management
+      setManagedApps(prev => {
+        const existing = prev.find(app => app.id === id);
+        if (existing) {
+          // Bring to front, unminimize, and update timestamp
+          return prev.map(app => 
+            app.id === id 
+              ? { ...app, isMinimized: false, lastActive: Date.now() }
+              : app
+          );
+        }
+
+        // Calculate position: first app is center, subsequent apps cascade or random
+        const position = prev.length === 0 ? "center" : "left";
+        const newApp: ManagedApp = {
+          id,
+          label,
+          position,
+          isMinimized: false,
+          isMaximized: false,
+          zIndex: 2000 + prev.length + 1,
+          lastActive: Date.now(),
+        };
+        return [...prev, newApp];
+      });
       setActiveWindowId(id);
     }
   };
 
   const handleOpenSubApp = (id: string, label: string) => {
-    setSubApps(prev => {
+    setManagedApps(prev => {
       const existing = prev.find(app => app.id === id);
       if (existing) {
-         const filtered = prev.filter(app => app.id !== id);
-         return [...filtered, existing];
+        return prev.map(app => 
+          app.id === id 
+            ? { ...app, isMinimized: false, lastActive: Date.now() }
+            : app
+        );
       }
       const randX = Math.floor(Math.random() * 40) + 30;
       const randY = Math.floor(Math.random() * 40) + 30;
-      return [...prev, { id, label, pos: { x: `${randX}%`, y: `${randY}%` } }];
+      const newSubApp: ManagedApp = {
+        id,
+        label,
+        position: "random",
+        customPos: { x: `${randX}%`, y: `${randY}%` },
+        isMinimized: false,
+        isMaximized: false,
+        zIndex: 2000 + prev.length + 1,
+        lastActive: Date.now(),
+      };
+      return [...prev, newSubApp];
     });
     setActiveWindowId(id);
   };
 
-  const handleCloseSubApp = (id: string) => {
-    setSubApps(prev => {
-      const nextApps = prev.filter(app => app.id !== id);
-      // If we are closing the currently active window, shift focus to the next available sub-app
-      if (activeWindowId === id) {
-        if (nextApps.length > 0) {
-          setActiveWindowId(nextApps[nextApps.length - 1].id);
-        } else {
-          setActiveWindowId(floatingApp?.id || null);
-        }
-      }
-      return nextApps;
-    });
+  // Minimize app: keeps it alive in the background
+  const handleMinimizeApp = (id: string) => {
+    setManagedApps(prev =>
+      prev.map(app => (app.id === id ? { ...app, isMinimized: true } : app))
+    );
+    if (activeWindowId === id) {
+      setActiveWindowId(null);
+    }
+  };
+
+  // Close/Terminate app completely
+  const handleTerminateApp = async (id: string) => {
+    setManagedApps(prev => prev.filter(app => app.id !== id));
+    if (activeWindowId === id) {
+      setActiveWindowId(null);
+    }
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('terminate_app_task', { taskId: id });
+    } catch (err) {
+      // ignore
+    }
+  };
+
+  // Switch to or restore an app from Task Switcher
+  const handleSelectFromSwitcher = (id: string) => {
+    setManagedApps(prev =>
+      prev.map(app =>
+        app.id === id 
+          ? { ...app, isMinimized: false, lastActive: Date.now() } 
+          : app
+      )
+    );
+    setActiveWindowId(id);
+    setIsTaskSwitcherOpen(false);
+  };
+
+  const handleMinimizeAll = () => {
+    setManagedApps(prev => prev.map(app => ({ ...app, isMinimized: true })));
+    setActiveWindowId(null);
+    setIsTaskSwitcherOpen(false);
   };
 
   const handleFocusWindow = (id: string) => {
-    if (id !== floatingApp?.id) {
-      setSubApps(prev => {
-        const existing = prev.find(app => app.id === id);
-        if (!existing) return prev;
-        const filtered = prev.filter(app => app.id !== id);
-        return [...filtered, existing];
-      });
-    }
     setActiveWindowId(id);
+    setManagedApps(prev =>
+      prev.map(app => (app.id === id ? { ...app, lastActive: Date.now() } : app))
+    );
   };
 
   const handleTrayClick = (type: 'wifi' | 'bluetooth' | 'volume' | 'arrow') => {
     if (isTrayOpen && trayType === type) {
-      setIsTrayOpen(false); // Toggle close if clicking the same icon
+      setIsTrayOpen(false);
       setTrayType(null);
     } else {
       setTrayType(type);
@@ -115,11 +218,13 @@ const HUDDesktop: React.FC = () => {
         transition: "opacity 2s ease-in-out"
       }}
     >
-      {/* Top Status Bar */}
+      {/* Top Status Bar with Task Switcher icon */}
       <HUDTopBar 
         onLaunchApps={() => setIsDrawerOpen(true)} 
         onStartClick={() => setIsStartMenuOpen(!isStartMenuOpen)}
         onTrayClick={handleTrayClick}
+        onToggleTaskSwitcher={() => setIsTaskSwitcherOpen(prev => !prev)}
+        runningTasksCount={managedApps.length}
       />
 
       {/* Start Menu Control Center */}
@@ -161,38 +266,35 @@ const HUDDesktop: React.FC = () => {
         onAppLaunch={handleAppLaunch}
       />
 
-      {/* Main App Window (Moves left if ANY subApp is open) */}
-      <FloatingAppWindow 
-        appId={floatingApp?.id || null}
-        appLabel={floatingApp?.label || ""}
-        position={subApps.length > 0 ? "left" : "center"}
-        totalSubApps={subApps.length}
-        isActive={activeWindowId === floatingApp?.id}
-        onClose={() => {
-          setFloatingApp(null);
-          setSubApps([]);
-          setActiveWindowId(null);
-        }}
-        onOpenSubApp={handleOpenSubApp}
-        onFocus={() => floatingApp?.id && handleFocusWindow(floatingApp.id)}
-      />
-
-      {/* Sub App Windows */}
-      {subApps.map((sub, index) => (
+      {/* Managed Multitasking Windows */}
+      {managedApps.map((app, index) => (
         <FloatingAppWindow 
-          key={sub.id}
-          appId={sub.id}
-          appLabel={sub.label}
-          position="random"
-          customPos={sub.pos}
+          key={app.id}
+          appId={app.id}
+          appLabel={app.label}
+          position={app.position}
+          customPos={app.customPos}
           index={index}
-          totalSubApps={subApps.length}
-          isActive={activeWindowId === sub.id}
-          onClose={() => handleCloseSubApp(sub.id)}
+          totalSubApps={managedApps.length}
+          isActive={activeWindowId === app.id}
+          isMinimized={app.isMinimized}
+          onMinimize={() => handleMinimizeApp(app.id)}
+          onClose={() => handleTerminateApp(app.id)}
           onOpenSubApp={handleOpenSubApp}
-          onFocus={() => handleFocusWindow(sub.id)}
+          onFocus={() => handleFocusWindow(app.id)}
         />
       ))}
+
+      {/* Double Right-Click Task Switcher / Exposé Matrix */}
+      <TaskSwitcherModal 
+        isOpen={isTaskSwitcherOpen}
+        apps={managedApps}
+        activeAppId={activeWindowId}
+        onClose={() => setIsTaskSwitcherOpen(false)}
+        onSelectApp={handleSelectFromSwitcher}
+        onTerminateApp={handleTerminateApp}
+        onMinimizeAll={handleMinimizeAll}
+      />
     </div>
   );
 };

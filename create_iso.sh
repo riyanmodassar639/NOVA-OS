@@ -73,6 +73,11 @@ usbutils
 alsa-utils
 mesa-utils
 vulkan-tools
+curl
+wget
+htop
+traceroute
+dnsutils
 EOF
 
 # Configure the OS to automatically log in and start our UI without a password!
